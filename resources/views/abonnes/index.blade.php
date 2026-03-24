@@ -3,44 +3,16 @@
 @section('title', 'Gestion des Abonnés')
 
 @section('content_header')
-<div class="container-fluid">
-    <div class="row mb-2">
-        <div class="col-sm-6">
-            <h1><i class="fas fa-users"></i> Gestion des Abonnés</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-right">
-                <li class="breadcrumb-item"><a href="{{ route('home') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Abonnés</li>
-            </ol>
-        </div>
-    </div>
+<div class="d-flex justify-content-between align-items-center">
+    <h1>Gestion des Abonnés</h1>
+    <button type="button" class="btn btn-success" data-toggle="modal" data-target="#addModal">
+        <i class="fas fa-plus"></i> Nouvel Abonné
+    </button>
 </div>
 @stop
 
 @section('content')
 <div class="container-fluid">
-    <!-- Messages Flash -->
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-            <h5><i class="icon fas fa-check"></i> Succès!</h5>
-            {{ session('success') }}
-        </div>
-    @endif
-
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-            <h5><i class="icon fas fa-ban"></i> Erreur!</h5>
-            {{ session('error') }}
-        </div>
-    @endif
-
     <!-- Statistiques -->
     <div class="row">
         <div class="col-lg-2 col-6">
@@ -112,46 +84,45 @@
     </div>
 
     <!-- Liste des Abonnés -->
-    <div class="card card-primary card-outline">
+    <div class="card">
         <div class="card-header">
-            <h3 class="card-title">
-                <i class="fas fa-list"></i> Liste des Abonnés
-            </h3>
-            <div class="card-tools">
-                <button type="button" class="btn btn-sm btn-success" data-toggle="modal" data-target="#addModal">
-                    <i class="fas fa-plus"></i> Nouvel Abonné
-                </button>
-                <button type="button" class="btn btn-sm btn-info" id="refreshTable">
-                    <i class="fas fa-sync"></i> Actualiser
-                </button>
-                <button type="button" class="btn btn-sm btn-secondary" id="exportCSV">
-                    <i class="fas fa-download"></i> Export
-                </button>
-            </div>
-        </div>
-        <div class="card-body">
-            <!-- Filtres -->
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <div class="form-group">
-                        <label>Recherche:</label>
-                        <input type="text" class="form-control" id="filter_search" placeholder="Nom, Prénom, CIN, Téléphone...">
-                    </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <h3 class="card-title">Liste des Abonnés</h3>
+                <div>
+                    <button class="btn btn-sm btn-info" id="refreshTable">
+                        <i class="fas fa-sync"></i> Actualiser
+                    </button>
+                    <button class="btn btn-sm btn-secondary" id="resetFilters">
+                        <i class="fas fa-redo"></i> Réinitialiser
+                    </button>
+                    <button class="btn btn-sm btn-primary" id="exportCSV">
+                        <i class="fas fa-download"></i> Export
+                    </button>
                 </div>
+            </div>
+            
+            <!-- Filtres -->
+            <div class="row mt-3">
                 <div class="col-md-3">
                     <div class="form-group">
-                        <label>Sexe:</label>
-                        <select class="form-control" id="filter_sexe">
+                        <label>Recherche</label>
+                        <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="Nom, Prénom, CIN, Téléphone...">
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-group">
+                        <label>Sexe</label>
+                        <select class="form-control form-control-sm" id="filter_sexe">
                             <option value="">Tous</option>
                             <option value="Homme">Homme</option>
                             <option value="Femme">Femme</option>
                         </select>
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <div class="form-group">
-                        <label>Statut:</label>
-                        <select class="form-control" id="filter_statut">
+                        <label>Statut</label>
+                        <select class="form-control form-control-sm" id="filter_statut">
                             <option value="">Tous</option>
                             <option value="actif">Actifs</option>
                             <option value="inactif">Inactifs</option>
@@ -161,48 +132,74 @@
                 </div>
                 <div class="col-md-2">
                     <div class="form-group">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-block btn-default" id="resetFilters">
-                            <i class="fas fa-redo"></i> Réinitialiser
-                        </button>
+                        <label>Type Abonnement</label>
+                        <select class="form-control form-control-sm" id="filter_type_abonnement">
+                            <option value="">Tous</option>
+                            <option value="mensuel">Mensuel</option>
+                            <option value="trimestriel">Trimestriel</option>
+                            <option value="annuel">Annuel</option>
+                        </select>
                     </div>
                 </div>
             </div>
-
+        </div>
+        
+        <div class="card-body">
             <table id="abonnesTable" class="table table-bordered table-striped table-hover w-100">
                 <thead>
                     <tr>
-                        <th width="30">#</th>
-                        <th width="50">Photo</th>
-                        <th>Nom Complet</th>
-                        <th>CIN</th>
-                        <th>Carte N°</th>
-                        <th>Téléphone</th>
-                        <th>Email</th>
-                        <th>Sexe</th>
-                        <th>Date Naiss.</th>
-                        <th>Âge</th>
-                        <th>Statut</th>
-                        <th>Abonnement</th>
-                        <th>Date Fin</th>
-                        <th width="150">Actions</th>
+                        <th width="5%">#</th>
+                        <th width="5%">Photo</th>
+                        <th width="10%">Nom Complet</th>
+                        <th width="8%">CIN</th>
+                        <th width="8%">Carte N°</th>
+                        <th width="8%">Téléphone</th>
+                        <th width="10%">Email</th>
+                        <th width="5%">Sexe</th>
+                        <th width="8%">Date Naiss.</th>
+                        <th width="5%">Âge</th>
+                        <th width="5%">Statut</th>
+                        <th width="8%">Abonnement</th>
+                        <th width="8%">Date Fin</th>
+                        <th width="12%">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <!-- DataTables -->
+                <tbody id="table-body">
+                    <!-- Les données seront chargées via AJAX -->
                 </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="10" class="text-right">Total Abonnés Actifs :</th>
+                        <th id="total_actifs">0</th>
+                        <th colspan="3"></th>
+                    </tr>
+                </tfoot>
             </table>
+            
+            <!-- Pagination simple -->
+            <div class="row mt-3">
+                <div class="col-sm-12 col-md-5">
+                    <div class="dataTables_info" id="table_info" role="status" aria-live="polite">
+                        Affichage de 0 à 0 sur 0 éléments
+                    </div>
+                </div>
+                <div class="col-sm-12 col-md-7">
+                    <div class="dataTables_paginate paging_simple_numbers" id="table_paginate">
+                        <ul class="pagination" id="pagination"></ul>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- ==================== MODAL AJOUT ==================== -->
+<!-- MODAL AJOUT -->
 <div class="modal fade" id="addModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-primary">
-                <h5 class="modal-title">Nouvel Abonné</h5>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-user-plus"></i> Nouvel Abonné</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
             </div>
             <form id="addForm" enctype="multipart/form-data">
                 @csrf
@@ -212,12 +209,11 @@
                             <div class="form-group">
                                 <label>Photo</label>
                                 <div class="text-center mb-3">
-                                    <img id="photoPreview" src="https://ui-avatars.com/api/?name=Photo&background=0D6EFD&color=fff&size=120" 
+                                    <img id="photoPreview" src="https://ui-avatars.com/api/?name=Photo&background=28a745&color=fff&size=120" 
                                          class="img-circle elevation-2" style="width: 120px; height: 120px; object-fit: cover;">
                                 </div>
-                                <div class="custom-file">
-                                    <input type="file" name="photo" id="photo" class="custom-file-input" accept="image/*">
-                                    <label class="custom-file-label" for="photo">Choisir photo</label>
+                                <div class="form-group">
+                                    <input type="file" name="photo" id="photo" class="form-control-file" accept="image/*">
                                 </div>
                             </div>
                         </div>
@@ -327,20 +323,57 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="submit" class="btn btn-success">Enregistrer</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- ==================== MODAL ABONNEMENT ==================== -->
+<!-- MODAL VOIR -->
+<div class="modal fade" id="viewModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="fas fa-eye"></i> Détails Abonné</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body" id="viewModalContent">
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ÉDITER -->
+<div class="modal fade" id="editModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="fas fa-edit"></i> Modifier Abonné</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div id="editModalContent">
+                <div class="text-center p-5">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ABONNEMENT -->
 <div class="modal fade" id="abonnementModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-success">
-                <h5 class="modal-title">Gérer Abonnement</h5>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="fas fa-calendar-alt"></i> Gérer Abonnement</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
             </div>
             <form id="abonnementForm">
                 @csrf
@@ -376,50 +409,13 @@
     </div>
 </div>
 
-<!-- ==================== MODAL VOIR ==================== -->
-<div class="modal fade" id="viewModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-info">
-                <h5 class="modal-title">Détails Abonné</h5>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
-            </div>
-            <div class="modal-body" id="viewModalContent">
-                <div class="text-center">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Fermer</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ==================== MODAL ÉDITER ==================== -->
-<div class="modal fade" id="editModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title">Modifier Abonné</h5>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
-            </div>
-            <div id="editModalContent">
-                <div class="text-center p-5">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ==================== MODAL SUPPRESSION ==================== -->
+<!-- MODAL SUPPRESSION -->
 <div class="modal fade" id="deleteModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger">
-                <h5 class="modal-title">Supprimer Abonné</h5>
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-trash"></i> Supprimer Abonné</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
             </div>
             <div class="modal-body">
                 <p>Êtes-vous sûr de vouloir supprimer cet abonné ?</p>
@@ -427,8 +423,8 @@
                 <input type="hidden" id="delete_id">
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger" id="confirmDelete">Supprimer</button>
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">Supprimer</button>
             </div>
         </div>
     </div>
@@ -469,6 +465,14 @@
     font-size: 85%;
     padding: 5px 8px;
 }
+tfoot th {
+    font-weight: bold;
+    background-color: #f4f6f9;
+}
+.modal-header .close {
+    color: white;
+    opacity: 1;
+}
 </style>
 @stop
 
@@ -486,73 +490,174 @@ toastr.options = {
 };
 
 $(document).ready(function() {
-    // ==================== DATATABLE ====================
-    var table = $('#abonnesTable').DataTable({
-        processing: true,
-        serverSide: true,
-        ajax: {
-            url: "{{ route('abonnes.getData') }}",
-            data: function(d) {
-                d.filters = {
-                    search: $('#filter_search').val(),
-                    sexe: $('#filter_sexe').val(),
-                    statut: $('#filter_statut').val()
-                };
-            }
-        },
-        columns: [
-            { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
-            { data: 'photo', name: 'photo', orderable: false, searchable: false },
-            { data: 'nom_complet', name: 'nom_complet' },
-            { data: 'cin', name: 'cin' },
-            { data: 'card_id', name: 'card_id' },
-            { data: 'telephone', name: 'telephone' },
-            { data: 'email', name: 'email' },
-            { data: 'sexe', name: 'sexe' },
-            { data: 'date_naissance', name: 'date_naissance' },
-            { data: 'age', name: 'age' },
-            { data: 'statut_badge', name: 'statut_badge', orderable: false },
-            { data: 'type_abonnement', name: 'type_abonnement' },
-            { data: 'expiration_badge', name: 'expiration_badge', orderable: false },
-            { data: 'action', name: 'action', orderable: false, searchable: false }
-        ],
-        pageLength: 10,
-        language: {
-            processing: "Traitement...",
-            search: "Rechercher:",
-            lengthMenu: "Afficher _MENU_ éléments",
-            info: "Affichage _START_ à _END_ sur _TOTAL_ éléments",
-            infoEmpty: "Affichage 0 à 0 sur 0 éléments",
-            infoFiltered: "(filtré de _MAX_ éléments)",
-            zeroRecords: "Aucun résultat",
-            paginate: {
-                first: "Premier",
-                previous: "Précédent",
-                next: "Suivant",
-                last: "Dernier"
-            }
+    // CSRF Token for all AJAX requests
+    $.ajaxSetup({
+        headers: {
+            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
         }
     });
 
+    // Variables de pagination
+    var currentPage = 1;
+    var pageSize = 10;
+    var totalRecords = 0;
+
+    // Charger les données
+    function loadData(page = 1) {
+        currentPage = page;
+        
+        $.ajax({
+            url: "{{ route('abonnes.getData') }}",
+            type: "GET",
+            data: {
+                draw: page,
+                start: (page - 1) * pageSize,
+                length: pageSize,
+                filters: {
+                    search: $('#filter_search').val(),
+                    sexe: $('#filter_sexe').val(),
+                    statut: $('#filter_statut').val(),
+                    type_abonnement: $('#filter_type_abonnement').val()
+                }
+            },
+            success: function(response) {
+                console.log("Données reçues:", response);
+                
+                if (response.data) {
+                    displayData(response.data);
+                    totalRecords = response.recordsTotal || 0;
+                    updatePagination();
+                    updateInfo();
+                    
+                    // Compter les actifs
+                    var actifs = response.data.filter(function(item) {
+                        return item.statut_badge && item.statut_badge.indexOf('Actif') > -1;
+                    }).length;
+                    $('#total_actifs').text(actifs + ' actifs');
+                }
+            },
+            error: function(xhr) {
+                console.error("Erreur AJAX:", xhr.responseText);
+                toastr.error("Erreur de chargement des données");
+            }
+        });
+    }
+
+    // Afficher les données dans le tableau
+    function displayData(data) {
+        var html = '';
+        
+        if (data.length === 0) {
+            html = '<tr><td colspan="14" class="text-center">Aucune donnée disponible</td></tr>';
+        } else {
+            $.each(data, function(index, item) {
+                html += '<tr>';
+                html += '<td>' + item.DT_RowIndex + '</td>';
+                html += '<td class="text-center">' + (item.photo || '-') + '</td>';
+                html += '<td>' + (item.nom_complet || '-') + '</td>';
+                html += '<td>' + (item.cin || '-') + '</td>';
+                html += '<td>' + (item.card_id || '-') + '</td>';
+                html += '<td>' + (item.telephone || '-') + '</td>';
+                html += '<td>' + (item.email || '-') + '</td>';
+                html += '<td class="text-center">' + (item.sexe || '-') + '</td>';
+                html += '<td class="text-center">' + (item.date_naissance || '-') + '</td>';
+                html += '<td class="text-center">' + (item.age || '-') + '</td>';
+                html += '<td class="text-center">' + (item.statut_badge || '-') + '</td>';
+                html += '<td class="text-center">' + (item.type_abonnement || '-') + '</td>';
+                html += '<td class="text-center">' + (item.expiration_badge || '-') + '</td>';
+                html += '<td class="text-center">' + (item.action || '-') + '</td>';
+                html += '</tr>';
+            });
+        }
+        
+        $('#table-body').html(html);
+    }
+
+    // Mettre à jour la pagination
+    function updatePagination() {
+        var totalPages = Math.ceil(totalRecords / pageSize);
+        var html = '';
+        
+        html += '<li class="paginate_button page-item previous ' + (currentPage === 1 ? 'disabled' : '') + '">';
+        html += '<a href="#" class="page-link" data-page="' + (currentPage - 1) + '">Précédent</a>';
+        html += '</li>';
+        
+        for (var i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                html += '<li class="paginate_button page-item ' + (i === currentPage ? 'active' : '') + '">';
+                html += '<a href="#" class="page-link" data-page="' + i + '">' + i + '</a>';
+                html += '</li>';
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                html += '<li class="paginate_button page-item disabled"><span class="page-link">...</span></li>';
+            }
+        }
+        
+        html += '<li class="paginate_button page-item next ' + (currentPage === totalPages ? 'disabled' : '') + '">';
+        html += '<a href="#" class="page-link" data-page="' + (currentPage + 1) + '">Suivant</a>';
+        html += '</li>';
+        
+        $('#pagination').html(html);
+    }
+
+    // Mettre à jour les informations
+    function updateInfo() {
+        var start = (currentPage - 1) * pageSize + 1;
+        var end = Math.min(currentPage * pageSize, totalRecords);
+        
+        $('#table_info').text('Affichage de ' + start + ' à ' + end + ' sur ' + totalRecords + ' éléments');
+    }
+
+    // Gestionnaire de clic sur la pagination
+    $(document).on('click', '#pagination a.page-link', function(e) {
+        e.preventDefault();
+        var page = $(this).data('page');
+        if (page && !$(this).parent().hasClass('disabled')) {
+            loadData(page);
+        }
+    });
+
+    // Charger les données au chargement de la page
+    loadData(1);
+
     // Filtres
-    $('#filter_search').on('keyup', function() { table.draw(); });
-    $('#filter_sexe, #filter_statut').on('change', function() { table.draw(); });
+    $('#filter_search').on('keyup', debounce(function() { 
+        loadData(1); 
+    }, 500));
+    
+    $('#filter_sexe, #filter_statut, #filter_type_abonnement').on('change', function() { 
+        loadData(1); 
+    });
 
     $('#resetFilters').on('click', function() {
         $('#filter_search').val('');
         $('#filter_sexe').val('');
         $('#filter_statut').val('');
-        table.draw();
+        $('#filter_type_abonnement').val('');
+        loadData(1);
+        toastr.info('Filtres réinitialisés');
     });
 
     $('#refreshTable').on('click', function() {
-        table.ajax.reload();
+        loadData(currentPage);
         toastr.info('Table actualisée');
     });
 
     $('#exportCSV').on('click', function() {
         window.location.href = "{{ route('abonnes.export') }}";
     });
+
+    // Fonction debounce
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
 
     // ==================== PHOTO PREVIEW ====================
     $('#photo').on('change', function() {
@@ -564,18 +669,9 @@ $(document).ready(function() {
             }
             reader.readAsDataURL(file);
         }
-        $(this).next('.custom-file-label').text(file.name);
     });
 
     // ==================== MODAL AJOUT ====================
-    $('#addModal').on('hidden.bs.modal', function() {
-        $('#addForm')[0].reset();
-        $('#addForm .form-control').removeClass('is-invalid');
-        $('#addForm .invalid-feedback').empty();
-        $('#photoPreview').attr('src', 'https://ui-avatars.com/api/?name=Photo&background=0D6EFD&color=fff&size=120');
-        $('.custom-file-label').text('Choisir photo');
-    });
-
     $('#addForm').on('submit', function(e) {
         e.preventDefault();
         
@@ -594,8 +690,12 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     $('#addModal').modal('hide');
-                    table.ajax.reload();
+                    loadData(1);
                     toastr.success(response.message);
+                    
+                    // Reset form
+                    $('#addForm')[0].reset();
+                    $('#photoPreview').attr('src', 'https://ui-avatars.com/api/?name=Photo&background=28a745&color=fff&size=120');
                 } else {
                     toastr.error(response.message);
                 }
@@ -605,17 +705,273 @@ $(document).ready(function() {
                 if (xhr.status === 422) {
                     let errors = xhr.responseJSON.errors;
                     $('.is-invalid').removeClass('is-invalid');
-                    $('.invalid-feedback').empty();
+                    $('.invalid-feedback').remove();
                     
                     $.each(errors, function(key, value) {
-                        $('#' + key).addClass('is-invalid');
-                        $('#' + key + '_error').text(value[0]);
+                        let input = $('[name="' + key + '"]');
+                        input.addClass('is-invalid');
+                        input.after('<div class="invalid-feedback">' + value[0] + '</div>');
                     });
                     toastr.warning('Veuillez corriger les erreurs');
                 } else {
                     toastr.error('Une erreur est survenue');
                 }
                 btn.prop('disabled', false).html(originalText);
+            }
+        });
+    });
+
+    // ==================== MODAL VOIR ====================
+    $(document).on('click', '.view-btn', function() {
+        let id = $(this).data('id');
+        $('#viewModalContent').html('<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...</div>');
+        $('#viewModal').modal('show');
+        
+        $.ajax({
+            url: "{{ url('abonnes') }}/" + id,
+            type: "GET",
+            success: function(response) {
+                if (response.success) {
+                    let a = response.data.abonne;
+                    let abonnements = response.data.abonnements || [];
+                    let photoUrl = a.photo ? '/storage/' + a.photo : 'https://ui-avatars.com/api/?name=' + a.nom + '+' + a.prenom + '&background=17a2b8&color=fff&size=150';
+                    
+                    let html = '<div class="row">';
+                    html += '<div class="col-md-4 text-center">';
+                    html += '<img src="' + photoUrl + '" class="img-circle elevation-2 mb-3" style="width:150px;height:150px;object-fit:cover;">';
+                    html += '<h4>' + a.nom + ' ' + a.prenom + '</h4>';
+                    html += '<span class="badge badge-' + (response.data.est_actif ? 'success' : 'secondary') + ' p-2">' + (response.data.est_actif ? 'Actif' : 'Inactif') + '</span>';
+                    html += '</div>';
+                    html += '<div class="col-md-8">';
+                    html += '<table class="table table-bordered table-striped">';
+                    html += '<tr><th>CIN:</th><td>' + (a.cin || '-') + '</td></tr>';
+                    html += '<tr><th>Carte N°:</th><td>' + (a.card_id || '-') + '</td></tr>';
+                    html += '<tr><th>Téléphone:</th><td>' + a.telephone + '</td></tr>';
+                    html += '<tr><th>Email:</th><td>' + (a.email || '-') + '</td></tr>';
+                    html += '<tr><th>Sexe:</th><td>' + (a.sexe || '-') + '</td></tr>';
+                    html += '<tr><th>Date Naissance:</th><td>' + (a.date_naissance || '-') + '</td></tr>';
+                    html += '<tr><th>Âge:</th><td>' + (response.data.age || '-') + ' ans</td></tr>';
+                    html += '<tr><th>Adresse:</th><td>' + (a.adresse || '-') + '</td></tr>';
+                    html += '</table>';
+                    
+                    if (abonnements.length > 0) {
+                        html += '<h5 class="mt-3">Historique des abonnements</h5>';
+                        html += '<table class="table table-sm table-bordered">';
+                        html += '<thead><tr><th>Type</th><th>Début</th><th>Fin</th><th>Montant</th><th>Statut</th></tr></thead>';
+                        html += '<tbody>';
+                        abonnements.forEach(function(ab) {
+                            html += '<tr>';
+                            html += '<td>' + (ab.type_abonnement || '-') + '</td>';
+                            html += '<td>' + (ab.date_debut || '-') + '</td>';
+                            html += '<td>' + (ab.date_fin || '-') + '</td>';
+                            html += '<td>' + (ab.montant || '-') + ' DH</td>';
+                            html += '<td><span class="badge badge-' + (ab.statut === 'actif' ? 'success' : 'secondary') + '">' + (ab.statut || '-') + '</span></td>';
+                            html += '</tr>';
+                        });
+                        html += '</tbody>';
+                        html += '</table>';
+                    }
+                    
+                    html += '</div></div>';
+                    
+                    $('#viewModalContent').html(html);
+                }
+            },
+            error: function() {
+                $('#viewModalContent').html('<div class="alert alert-danger">Erreur de chargement des données</div>');
+            }
+        });
+    });
+
+    // ==================== MODAL ÉDITER ====================
+    $(document).on('click', '.edit-btn', function() {
+        let id = $(this).data('id');
+        $('#editModalContent').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...</div>');
+        $('#editModal').modal('show');
+        
+        $.ajax({
+            url: "{{ url('abonnes') }}/" + id + "/edit",
+            type: "GET",
+            success: function(response) {
+                if (response.success) {
+                    let a = response.abonne;
+                    let photoUrl = a.photo ? '/storage/' + a.photo : 'https://ui-avatars.com/api/?name=' + a.nom + '+' + a.prenom + '&background=ffc107&color=000&size=120';
+                    
+                    let html = `
+                        <form id="editForm" enctype="multipart/form-data">
+                            @csrf
+                            @method('PUT')
+                            <div class="modal-body">
+                                <input type="hidden" name="id" value="` + a.id + `">
+                                <div class="row">
+                                    <div class="col-md-4 text-center">
+                                        <img id="editPhotoPreview" src="` + photoUrl + `" 
+                                             class="img-circle elevation-2 mb-3" style="width: 120px; height: 120px; object-fit: cover;">
+                                        <div class="form-group">
+                                            <input type="file" name="photo" id="edit_photo" class="form-control-file" accept="image/*">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Nom</label>
+                                                    <input type="text" name="nom" class="form-control" value="` + a.nom + `" required>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Prénom</label>
+                                                    <input type="text" name="prenom" class="form-control" value="` + a.prenom + `" required>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>CIN</label>
+                                                    <input type="text" name="cin" class="form-control" value="` + (a.cin || '') + `">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Carte N°</label>
+                                                    <input type="text" name="card_id" class="form-control" value="` + (a.card_id || '') + `">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Téléphone</label>
+                                                    <input type="text" name="telephone" class="form-control" value="` + a.telephone + `" required>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Email</label>
+                                                    <input type="email" name="email" class="form-control" value="` + (a.email || '') + `">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Sexe</label>
+                                                    <select name="sexe" class="form-control">
+                                                        <option value="">Non spécifié</option>
+                                                        <option value="Homme" ` + (a.sexe === 'Homme' ? 'selected' : '') + `>Homme</option>
+                                                        <option value="Femme" ` + (a.sexe === 'Femme' ? 'selected' : '') + `>Femme</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Date Naiss.</label>
+                                                    <input type="date" name="date_naissance" class="form-control" value="` + (a.date_naissance || '') + `">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Lieu</label>
+                                                    <input type="text" name="lieu_naissance" class="form-control" value="` + (a.lieu_naissance || '') + `">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Nationalité</label>
+                                                    <input type="text" name="nationalite" class="form-control" value="` + (a.nationalite || 'Marocaine') + `">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Situation</label>
+                                                    <select name="situation_familiale" class="form-control">
+                                                        <option value="">Choisir</option>
+                                                        <option value="Célibataire" ` + (a.situation_familiale === 'Célibataire' ? 'selected' : '') + `>Célibataire</option>
+                                                        <option value="Marié(e)" ` + (a.situation_familiale === 'Marié(e)' ? 'selected' : '') + `>Marié(e)</option>
+                                                        <option value="Divorcé(e)" ` + (a.situation_familiale === 'Divorcé(e)' ? 'selected' : '') + `>Divorcé(e)</option>
+                                                        <option value="Veuf(ve)" ` + (a.situation_familiale === 'Veuf(ve)' ? 'selected' : '') + `>Veuf(ve)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Profession</label>
+                                                    <input type="text" name="profession" class="form-control" value="` + (a.profession || '') + `">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Adresse</label>
+                                            <textarea name="adresse" class="form-control" rows="2">` + (a.adresse || '') + `</textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Notes</label>
+                                            <textarea name="notes" class="form-control" rows="2">` + (a.notes || '') + `</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                                <button type="submit" class="btn btn-primary">Mettre à jour</button>
+                            </div>
+                        </form>
+                    `;
+                    
+                    $('#editModalContent').html(html);
+                    
+                    $('#edit_photo').on('change', function() {
+                        let file = this.files[0];
+                        if (file) {
+                            let reader = new FileReader();
+                            reader.onload = function(e) {
+                                $('#editPhotoPreview').attr('src', e.target.result);
+                            }
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                    
+                    $('#editForm').on('submit', function(e) {
+                        e.preventDefault();
+                        let formData = new FormData(this);
+                        
+                        $.ajax({
+                            url: "{{ url('abonnes') }}/" + id,
+                            type: "POST",
+                            data: formData,
+                            processData: false,
+                            contentType: false,
+                            headers: {'X-HTTP-Method-Override': 'PUT'},
+                            success: function(response) {
+                                if (response.success) {
+                                    $('#editModal').modal('hide');
+                                    loadData(currentPage);
+                                    toastr.success(response.message);
+                                }
+                            },
+                            error: function(xhr) {
+                                if (xhr.status === 422) {
+                                    let errors = xhr.responseJSON.errors;
+                                    $('.is-invalid').removeClass('is-invalid');
+                                    $('.invalid-feedback').remove();
+                                    
+                                    $.each(errors, function(key, value) {
+                                        let input = $('#editForm [name="' + key + '"]');
+                                        input.addClass('is-invalid');
+                                        input.after('<div class="invalid-feedback">' + value[0] + '</div>');
+                                    });
+                                    toastr.warning('Veuillez corriger les erreurs');
+                                } else {
+                                    toastr.error('Erreur lors de la mise à jour');
+                                }
+                            }
+                        });
+                    });
+                }
             }
         });
     });
@@ -642,7 +998,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     $('#abonnementModal').modal('hide');
-                    table.ajax.reload();
+                    loadData(currentPage);
                     toastr.success(response.message);
                 }
                 btn.prop('disabled', false).html(originalText);
@@ -650,246 +1006,6 @@ $(document).ready(function() {
             error: function() {
                 toastr.error('Erreur lors de l\'ajout');
                 btn.prop('disabled', false).html(originalText);
-            }
-        });
-    });
-
-    // ==================== MODAL VOIR ====================
-    $(document).on('click', '.view-btn', function() {
-        let id = $(this).data('id');
-        $('#viewModalContent').html('<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...</div>');
-        $('#viewModal').modal('show');
-        
-        $.ajax({
-            url: "{{ url('abonnes') }}/" + id,
-            type: "GET",
-            success: function(response) {
-                if (response.success) {
-                    let a = response.data.abonne;
-                    let abonnements = response.data.abonnements || [];
-                    let photoUrl = a.photo ? '/storage/' + a.photo : 'https://ui-avatars.com/api/?name=' + a.nom + '+' + a.prenom + '&background=0D6EFD&color=fff&size=150';
-                    
-                    let html = '<div class="row">';
-                    html += '<div class="col-md-4 text-center">';
-                    html += '<img src="' + photoUrl + '" class="img-circle elevation-2 mb-3" style="width:150px;height:150px;object-fit:cover;">';
-                    html += '<h4>' + a.nom + ' ' + a.prenom + '</h4>';
-                    html += '<span class="badge badge-' + (response.data.est_actif ? 'success' : 'secondary') + '">' + (response.data.est_actif ? 'Actif' : 'Inactif') + '</span>';
-                    html += '</div>';
-                    html += '<div class="col-md-8">';
-                    html += '<table class="table table-bordered">';
-                    html += '<tr><th>CIN:</th><td>' + (a.cin || 'N/A') + '</td></tr>';
-                    html += '<tr><th>Carte N°:</th><td>' + (a.card_id || 'N/A') + '</td></tr>';
-                    html += '<tr><th>Téléphone:</th><td>' + a.telephone + '</td></tr>';
-                    html += '<tr><th>Email:</th><td>' + (a.email || 'N/A') + '</td></tr>';
-                    html += '<tr><th>Sexe:</th><td>' + (a.sexe || 'N/A') + '</td></tr>';
-                    html += '<tr><th>Date Naissance:</th><td>' + (a.date_naissance || 'N/A') + '</td></tr>';
-                    html += '<tr><th>Âge:</th><td>' + (response.data.age || 'N/A') + ' ans</td></tr>';
-                    html += '<tr><th>Adresse:</th><td>' + (a.adresse || 'N/A') + '</td></tr>';
-                    html += '</table>';
-                    
-                    // Historique des abonnements
-                    if (abonnements.length > 0) {
-                        html += '<h5 class="mt-3">Historique des abonnements</h5>';
-                        html += '<table class="table table-sm">';
-                        html += '<tr><th>Type</th><th>Début</th><th>Fin</th><th>Montant</th><th>Statut</th></tr>';
-                        abonnements.forEach(function(ab) {
-                            let statutClass = ab.statut === 'actif' ? 'success' : 'secondary';
-                            html += '<tr>';
-                            html += '<td>' + ab.type_abonnement + '</td>';
-                            html += '<td>' + ab.date_debut + '</td>';
-                            html += '<td>' + ab.date_fin + '</td>';
-                            html += '<td>' + ab.montant + ' DH</td>';
-                            html += '<td><span class="badge badge-' + statutClass + '">' + ab.statut + '</span></td>';
-                            html += '</tr>';
-                        });
-                        html += '</table>';
-                    }
-                    
-                    html += '</div></div>';
-                    
-                    $('#viewModalContent').html(html);
-                }
-            }
-        });
-    });
-
-    // ==================== MODAL ÉDITER ====================
-    $(document).on('click', '.edit-btn', function() {
-        let id = $(this).data('id');
-        $('#editModalContent').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x"></i> Chargement...</div>');
-        $('#editModal').modal('show');
-        
-        $.ajax({
-            url: "{{ url('abonnes') }}/" + id + "/edit",
-            type: "GET",
-            success: function(response) {
-                if (response.success) {
-                    let a = response.abonne;
-                    let photoUrl = a.photo ? '/storage/' + a.photo : 'https://ui-avatars.com/api/?name=' + a.nom + '+' + a.prenom + '&background=0D6EFD&color=fff&size=120';
-                    
-                    let html = `
-                        <form id="editForm" enctype="multipart/form-data">
-                            @csrf
-                            @method('PUT')
-                            <div class="modal-body">
-                                <input type="hidden" name="id" value="${a.id}">
-                                <div class="row">
-                                    <div class="col-md-4 text-center">
-                                        <img id="editPhotoPreview" src="${photoUrl}" 
-                                             class="img-circle elevation-2 mb-3" style="width: 120px; height: 120px; object-fit: cover;">
-                                        <div class="custom-file">
-                                            <input type="file" name="photo" class="custom-file-input" id="edit_photo" accept="image/*">
-                                            <label class="custom-file-label" for="edit_photo">Changer photo</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>Nom</label>
-                                                    <input type="text" name="nom" class="form-control" value="${a.nom}" required>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>Prénom</label>
-                                                    <input type="text" name="prenom" class="form-control" value="${a.prenom}" required>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>CIN</label>
-                                                    <input type="text" name="cin" class="form-control" value="${a.cin || ''}">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>Carte N°</label>
-                                                    <input type="text" name="card_id" class="form-control" value="${a.card_id || ''}">
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>Téléphone</label>
-                                                    <input type="text" name="telephone" class="form-control" value="${a.telephone}" required>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <div class="form-group">
-                                                    <label>Email</label>
-                                                    <input type="email" name="email" class="form-control" value="${a.email || ''}">
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Sexe</label>
-                                                    <select name="sexe" class="form-control">
-                                                        <option value="">Non</option>
-                                                        <option value="Homme" ${a.sexe == 'Homme' ? 'selected' : ''}>Homme</option>
-                                                        <option value="Femme" ${a.sexe == 'Femme' ? 'selected' : ''}>Femme</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Date Naiss.</label>
-                                                    <input type="date" name="date_naissance" class="form-control" value="${a.date_naissance || ''}">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Lieu</label>
-                                                    <input type="text" name="lieu_naissance" class="form-control" value="${a.lieu_naissance || ''}">
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Nationalité</label>
-                                                    <input type="text" name="nationalite" class="form-control" value="${a.nationalite || 'Marocaine'}">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Situation</label>
-                                                    <select name="situation_familiale" class="form-control">
-                                                        <option value="">Choisir</option>
-                                                        <option value="Célibataire" ${a.situation_familiale == 'Célibataire' ? 'selected' : ''}>Célibataire</option>
-                                                        <option value="Marié(e)" ${a.situation_familiale == 'Marié(e)' ? 'selected' : ''}>Marié(e)</option>
-                                                        <option value="Divorcé(e)" ${a.situation_familiale == 'Divorcé(e)' ? 'selected' : ''}>Divorcé(e)</option>
-                                                        <option value="Veuf(ve)" ${a.situation_familiale == 'Veuf(ve)' ? 'selected' : ''}>Veuf(ve)</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="form-group">
-                                                    <label>Profession</label>
-                                                    <input type="text" name="profession" class="form-control" value="${a.profession || ''}">
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Adresse</label>
-                                            <textarea name="adresse" class="form-control" rows="2">${a.adresse || ''}</textarea>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Notes</label>
-                                            <textarea name="notes" class="form-control" rows="2">${a.notes || ''}</textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
-                                <button type="submit" class="btn btn-primary">Mettre à jour</button>
-                            </div>
-                        </form>
-                    `;
-                    
-                    $('#editModalContent').html(html);
-                    
-                    // Prévisualisation photo
-                    $('#edit_photo').on('change', function() {
-                        let file = this.files[0];
-                        if (file) {
-                            let reader = new FileReader();
-                            reader.onload = function(e) {
-                                $('#editPhotoPreview').attr('src', e.target.result);
-                            }
-                            reader.readAsDataURL(file);
-                        }
-                        $(this).next('.custom-file-label').text(file.name);
-                    });
-                    
-                    // Soumission formulaire
-                    $('#editForm').on('submit', function(e) {
-                        e.preventDefault();
-                        let formData = new FormData(this);
-                        
-                        $.ajax({
-                            url: "{{ url('abonnes') }}/" + id,
-                            type: "POST",
-                            data: formData,
-                            processData: false,
-                            contentType: false,
-                            headers: {'X-HTTP-Method-Override': 'PUT'},
-                            success: function(response) {
-                                if (response.success) {
-                                    $('#editModal').modal('hide');
-                                    table.ajax.reload();
-                                    toastr.success(response.message);
-                                }
-                            }
-                        });
-                    });
-                }
             }
         });
     });
@@ -912,7 +1028,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     $('#deleteModal').modal('hide');
-                    table.ajax.reload();
+                    loadData(currentPage);
                     toastr.success(response.message);
                 }
                 btn.prop('disabled', false).html('Supprimer');
@@ -929,5 +1045,4 @@ $(document).ready(function() {
 
 @section('plugins.Datatables', true)
 @section('plugins.Toastr', true)
-@section('plugins.Select2', true)
 @section('plugins.BsCustomFileInput', true)

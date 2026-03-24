@@ -20,7 +20,7 @@ use App\Http\Controllers\SettingController;
 */
 
 // Route d'accueil
-Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/home', [HomeController::class, 'index'])->name('home');
 
 // ==================== ROUTES POUR LES ABONNÉS ====================
 // Route pour le statut ZK

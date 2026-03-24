@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
+use Yajra\DataTables\Facades\DataTables;
 
 class AbonneController extends Controller
 {
@@ -19,8 +20,8 @@ class AbonneController extends Controller
     {
         // Statistiques
         $totalAbonnes = Abonne::count();
-        $totalHommes = Abonne::where('sexe', 'Homme')->count();
-        $totalFemmes = Abonne::where('sexe', 'Femme')->count();
+        $totalHommes = Abonne::where('sexe', 'Homme')->orWhere('sexe', 'homme')->orWhere('sexe', 'H')->orWhere('sexe', 'h')->count();
+        $totalFemmes = Abonne::where('sexe', 'Femme')->orWhere('sexe', 'femme')->orWhere('sexe', 'F')->orWhere('sexe', 'f')->count();
         $totalActifs = Abonne::actifs()->count();
         $totalInactifs = $totalAbonnes - $totalActifs;
         $totalExpireBientot = Abonne::expireBientot(7)->count();
@@ -35,133 +36,159 @@ class AbonneController extends Controller
         ));
     }
 
-    /**
-     * Get data for DataTable
-     */
-    public function getData(Request $request)
-    {
-        $draw = $request->input('draw');
-        $start = $request->input('start');
-        $length = $request->input('length');
-        $search = $request->input('filters.search');
-        $sexe = $request->input('filters.sexe');
-        $statut = $request->input('filters.statut');
+/**
+ * Get data for DataTable - Version corrigée avec le bon format
+ */
+public function getData(Request $request)
+{
+    $query = Abonne::with('abonnements');
 
-        $query = Abonne::with('abonnements');
+    // Filtre recherche
+    if ($request->has('filters.search') && !empty($request->filters['search'])) {
+        $search = $request->filters['search'];
+        $query->where(function($q) use ($search) {
+            $q->where('nom', 'LIKE', "%{$search}%")
+              ->orWhere('prenom', 'LIKE', "%{$search}%")
+              ->orWhere('cin', 'LIKE', "%{$search}%")
+              ->orWhere('card_id', 'LIKE', "%{$search}%")
+              ->orWhere('telephone', 'LIKE', "%{$search}%")
+              ->orWhere('email', 'LIKE', "%{$search}%");
+        });
+    }
 
-        // Filtre recherche
-        if (!empty($search)) {
-            $query->where(function($q) use ($search) {
-                $q->where('nom', 'LIKE', "%{$search}%")
-                  ->orWhere('prenom', 'LIKE', "%{$search}%")
-                  ->orWhere('cin', 'LIKE', "%{$search}%")
-                  ->orWhere('card_id', 'LIKE', "%{$search}%")
-                  ->orWhere('telephone', 'LIKE', "%{$search}%")
-                  ->orWhere('email', 'LIKE', "%{$search}%");
+    // Filtre sexe
+    if ($request->has('filters.sexe') && !empty($request->filters['sexe'])) {
+        $sexe = $request->filters['sexe'];
+        if ($sexe === 'Homme') {
+            $query->where(function($q) {
+                $q->where('sexe', 'Homme')
+                  ->orWhere('sexe', 'homme')
+                  ->orWhere('sexe', 'H')
+                  ->orWhere('sexe', 'h')
+                  ->orWhere('sexe', 'M')
+                  ->orWhere('sexe', 'm');
+            });
+        } elseif ($sexe === 'Femme') {
+            $query->where(function($q) {
+                $q->where('sexe', 'Femme')
+                  ->orWhere('sexe', 'femme')
+                  ->orWhere('sexe', 'F')
+                  ->orWhere('sexe', 'f')
+                  ->orWhere('sexe', 'W')
+                  ->orWhere('sexe', 'w');
             });
         }
+    }
 
-        // Filtre sexe
-        if (!empty($sexe)) {
-            $query->where('sexe', $sexe);
-        }
-
-        // Filtre statut
-        if ($statut === 'actif') {
+    // Filtre statut
+    if ($request->has('filters.statut') && !empty($request->filters['statut'])) {
+        if ($request->filters['statut'] === 'actif') {
             $query->actifs();
-        } elseif ($statut === 'inactif') {
+        } elseif ($request->filters['statut'] === 'inactif') {
             $query->inactifs();
-        } elseif ($statut === 'expire_bientot') {
+        } elseif ($request->filters['statut'] === 'expire_bientot') {
             $query->expireBientot(7);
         }
+    }
 
-        $totalRecords = $query->count();
+    // Filtre type abonnement
+    if ($request->has('filters.type_abonnement') && !empty($request->filters['type_abonnement'])) {
+        $type = $request->filters['type_abonnement'];
+        $query->whereHas('abonnements', function($q) use ($type) {
+            $q->where('type_abonnement', $type)
+              ->where('statut', 'actif');
+        });
+    }
 
-        $abonnes = $query->orderBy('created_at', 'desc')
-            ->skip($start)
-            ->take($length)
-            ->get();
+    // Pagination
+    $totalRecords = $query->count();
+    $start = $request->input('start', 0);
+    $length = $request->input('length', 10);
+    
+    $abonnes = $query->orderBy('created_at', 'desc')
+        ->skip($start)
+        ->take($length)
+        ->get();
 
-        $data = [];
-        foreach ($abonnes as $index => $abonne) {
-            // Mettre à jour les statuts des abonnements
-            foreach ($abonne->abonnements as $abonnement) {
-                $abonnement->updateStatut();
-            }
-
-            // Récupérer l'abonnement actif
-            $abonnementActif = $abonne->abonnement_actif;
-            
-            // Badge statut
-            if ($abonne->est_actif) {
-                $statutBadge = '<span class="badge badge-success">Actif</span>';
-            } else {
-                $statutBadge = '<span class="badge badge-secondary">Inactif</span>';
-            }
-
-            // Badge expiration
-            if ($abonnementActif) {
-                $joursRestants = $abonnementActif->jours_restants;
-                if ($joursRestants <= 3) {
-                    $expirationBadge = '<span class="badge badge-danger">Expire dans ' . $joursRestants . 'j</span>';
-                } elseif ($joursRestants <= 7) {
-                    $expirationBadge = '<span class="badge badge-warning">Expire dans ' . $joursRestants . 'j</span>';
-                } else {
-                    $expirationBadge = '<span class="badge badge-info">' . $joursRestants . 'j restants</span>';
-                }
-            } else {
-                $expirationBadge = '<span class="badge badge-secondary">Pas d\'abonnement</span>';
-            }
-
-            // Photo
-            $photo = $abonne->photo 
-                ? '<img src="/storage/'.$abonne->photo.'" class="img-circle elevation-2" style="width: 40px; height: 40px; object-fit: cover;">'
-                : '<img src="https://ui-avatars.com/api/?name='.urlencode($abonne->nom.'+'.$abonne->prenom).'&background=0D6EFD&color=fff&size=40" class="img-circle elevation-2" style="width: 40px; height: 40px;">';
-
-            // Actions
-            $action = '
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-info view-btn" data-id="'.$abonne->id.'" title="Voir">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button type="button" class="btn btn-warning edit-btn" data-id="'.$abonne->id.'" title="Modifier">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button type="button" class="btn btn-success abonnement-btn" data-id="'.$abonne->id.'" title="Gérer abonnement">
-                    <i class="fas fa-calendar-alt"></i>
-                </button>
-                <button type="button" class="btn btn-danger delete-btn" data-id="'.$abonne->id.'" title="Supprimer">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>';
-
-            $data[] = [
-                'DT_RowIndex' => $start + $index + 1,
-                'id' => $abonne->id,
-                'photo' => $photo,
-                'nom_complet' => $abonne->nom_complet,
-                'cin' => $abonne->cin ?? '-',
-                'card_id' => $abonne->card_id ?? '-',
-                'telephone' => $abonne->telephone,
-                'email' => $abonne->email ?? '-',
-                'sexe' => $abonne->sexe ?? '-',
-                'date_naissance' => $abonne->date_naissance ? $abonne->date_naissance->format('d/m/Y') : '-',
-                'age' => $abonne->age ?? '-',
-                'statut_badge' => $statutBadge,
-                'expiration_badge' => $expirationBadge,
-                'type_abonnement' => $abonnementActif ? ucfirst($abonnementActif->type_abonnement) : '-',
-                'date_fin' => $abonne->date_fin_abonnement ?? '-',
-                'action' => $action
-            ];
+    $data = [];
+    foreach ($abonnes as $index => $abonne) {
+        // Mettre à jour les statuts des abonnements
+        foreach ($abonne->abonnements as $abonnement) {
+            $abonnement->updateStatut();
         }
 
-        return response()->json([
-            'draw' => $draw,
-            'recordsTotal' => $totalRecords,
-            'recordsFiltered' => $totalRecords,
-            'data' => $data
-        ]);
+        // Récupérer l'abonnement actif
+        $abonnementActif = $abonne->abonnement_actif;
+        
+        // Badge statut
+        if ($abonne->est_actif) {
+            $statutBadge = '<span class="badge badge-success">Actif</span>';
+        } else {
+            $statutBadge = '<span class="badge badge-secondary">Inactif</span>';
+        }
+
+        // Badge expiration
+        if ($abonnementActif) {
+            $joursRestants = $abonnementActif->jours_restants;
+            if ($joursRestants <= 3) {
+                $expirationBadge = '<span class="badge badge-danger">Expire dans ' . $joursRestants . 'j</span>';
+            } elseif ($joursRestants <= 7) {
+                $expirationBadge = '<span class="badge badge-warning">Expire dans ' . $joursRestants . 'j</span>';
+            } else {
+                $expirationBadge = '<span class="badge badge-info">' . $joursRestants . 'j restants</span>';
+            }
+        } else {
+            $expirationBadge = '<span class="badge badge-secondary">Pas d\'abonnement</span>';
+        }
+
+        // Photo
+        $photo = $abonne->photo 
+            ? '<img src="/storage/'.$abonne->photo.'" class="img-circle elevation-2" style="width: 40px; height: 40px; object-fit: cover;">'
+            : '<img src="https://ui-avatars.com/api/?name='.urlencode($abonne->nom.'+'.$abonne->prenom).'&background=0D6EFD&color=fff&size=40" class="img-circle elevation-2" style="width: 40px; height: 40px;">';
+
+        // Actions
+        $action = '
+        <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-info view-btn" data-id="'.$abonne->id.'" title="Voir">
+                <i class="fas fa-eye"></i>
+            </button>
+            <button type="button" class="btn btn-warning edit-btn" data-id="'.$abonne->id.'" title="Modifier">
+                <i class="fas fa-edit"></i>
+            </button>
+            <button type="button" class="btn btn-success abonnement-btn" data-id="'.$abonne->id.'" title="Gérer abonnement">
+                <i class="fas fa-calendar-alt"></i>
+            </button>
+            <button type="button" class="btn btn-danger delete-btn" data-id="'.$abonne->id.'" title="Supprimer">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>';
+
+        $data[] = [
+            'DT_RowIndex' => $start + $index + 1,
+            'photo' => $photo,
+            'nom_complet' => $abonne->nom_complet,
+            'cin' => $abonne->cin ?? '-',
+            'card_id' => $abonne->card_id ?? '-',
+            'telephone' => $abonne->telephone,
+            'email' => $abonne->email ?? '-',
+            'sexe' => $abonne->sexe ?? '-',
+            'date_naissance' => $abonne->date_naissance ? $abonne->date_naissance->format('d/m/Y') : '-',
+            'age' => $abonne->age ?? '-',
+            'statut_badge' => $statutBadge,
+            'type_abonnement' => $abonnementActif ? ucfirst($abonnementActif->type_abonnement) : '-',
+            'expiration_badge' => $expirationBadge,
+            'action' => $action
+        ];
     }
+
+    // Retourner au format DataTables
+    return response()->json([
+        'draw' => intval($request->input('draw', 0)),
+        'recordsTotal' => $totalRecords,
+        'recordsFiltered' => $totalRecords,
+        'data' => $data
+    ]);
+}
 
     /**
      * Store a newly created resource in storage.

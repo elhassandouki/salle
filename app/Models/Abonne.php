@@ -65,6 +65,15 @@ class Abonne extends Model
             ->where('statut', 'actif')
             ->first();
     }
+    //meme function
+    public function abonnementActif()
+    {
+        return $this->hasOne(Abonnement::class)
+            ->where('statut', 'actif')
+            ->where('date_fin', '>=', now())
+            ->orderBy('created_at', 'desc');
+    }
+    
 
     /**
      * Vérifier si l'abonné est actif
