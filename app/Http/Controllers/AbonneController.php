@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Abonne;
 use App\Models\Abonnement;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 use Yajra\DataTables\Facades\DataTables;
+use App\Models\Pointage;
+use App\Services\ZKTecoService;
 
 class AbonneController extends Controller
 {
@@ -394,6 +397,93 @@ public function getData(Request $request)
     }
 
     /**
+     * Synchroniser un seul abonné vers ZKTeco.
+     */
+    public function syncZKTeco(Abonne $abonne, ZKTecoService $zkService)
+    {
+        if (! $abonne->est_actif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cet abonné n\'a pas d\'abonnement actif.',
+            ], 422);
+        }
+
+        $payload = [$this->prepareZkUserPayload($abonne)];
+        $result = $zkService->syncUsersToDevice($payload);
+        $this->logZkSyncAttempt('sync_zkteco_single', 'Abonne', $abonne->id, [
+            'scope' => 'single',
+            'abonne_id' => $abonne->id,
+            'result' => $result,
+        ]);
+
+        return response()->json([
+            'success' => $result['success'],
+            'message' => $result['success']
+                ? 'Abonné synchronisé avec ZKTeco.'
+                : ($result['errors'][0] ?? 'La synchronisation ZKTeco a échoué.'),
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Synchroniser plusieurs abonnés vers ZKTeco selon le filtre choisi.
+     */
+    public function syncAllZKTeco(Request $request, ZKTecoService $zkService)
+    {
+        $validator = Validator::make($request->all(), [
+            'sync_scope' => 'required|in:actifs,all',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Choix de synchronisation invalide.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $query = Abonne::query()->orderBy('nom')->orderBy('prenom');
+
+        if ($request->sync_scope === 'actifs') {
+            $query->actifs();
+        }
+
+        $abonnes = $query->get();
+
+        if ($abonnes->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => $request->sync_scope === 'actifs'
+                    ? 'Aucun abonné actif à synchroniser.'
+                    : 'Aucun abonné trouvé pour la synchronisation.',
+            ], 422);
+        }
+
+        $users = $abonnes->map(function (Abonne $abonne) {
+            return $this->prepareZkUserPayload($abonne);
+        })->values()->all();
+
+        $result = $zkService->syncUsersToDevice($users);
+        $this->logZkSyncAttempt('sync_zkteco_bulk', 'Abonne', null, [
+            'scope' => $request->sync_scope,
+            'abonne_ids' => $abonnes->pluck('id')->all(),
+            'requested_total' => $abonnes->count(),
+            'result' => $result,
+        ]);
+
+        $scopeLabel = $request->sync_scope === 'actifs' ? 'abonnés actifs' : 'tous les abonnés';
+        $message = $result['success']
+            ? "{$result['synced_count']} {$scopeLabel} synchronisés vers ZKTeco."
+            : ($result['errors'][0] ?? 'Machine ZKTeco non disponible pour le moment. La tentative a été enregistrée.');
+
+        return response()->json([
+            'success' => $result['success'],
+            'message' => $message,
+            'data' => $result,
+        ]);
+    }
+
+    /**
      * Ajouter un abonnement à un abonné
      */
     public function ajouterAbonnement(Request $request, $id)
@@ -561,5 +651,75 @@ public function getData(Request $request)
         };
         
         return response()->stream($callback, 200, $headers);
+    }
+
+    public function getAbonnesForZKTeco(Request $request)
+    {
+        $scope = $request->input('sync_scope', 'actifs');
+        $query = Abonne::query()->orderBy('nom')->orderBy('prenom');
+
+        if ($scope === 'actifs') {
+            $query->actifs();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $query->get()->map(function (Abonne $abonne) {
+                return [
+                    'id' => $abonne->id,
+                    'uid' => $abonne->uid ?: (string) $abonne->id,
+                    'nom_complet' => $abonne->nom_complet,
+                    'card_id' => $abonne->card_id,
+                    'est_actif' => $abonne->est_actif,
+                ];
+            }),
+        ]);
+    }
+
+    public function checkZkStatus()
+    {
+        $lastPointage = Pointage::latest('date_pointage')->first();
+
+        return view('zkteco.status', [
+            'deviceName' => 'ZKTeco F18',
+            'status' => 'Configuration manuelle',
+            'lastSync' => optional($lastPointage?->date_pointage)->format('d/m/Y H:i'),
+            'todayEntries' => Pointage::whereDate('date_pointage', today())->count(),
+            'totalAbonnes' => Abonne::count(),
+            'syncEndpoint' => route('api.zkteco.sync'),
+        ]);
+    }
+
+    private function prepareZkUserPayload(Abonne $abonne): array
+    {
+        $uid = $abonne->uid ?: (string) $abonne->id;
+
+        if (! $abonne->uid) {
+            $abonne->forceFill(['uid' => $uid])->save();
+        }
+
+        return [
+            'uid' => $uid,
+            'user_id' => $uid,
+            'name' => trim($abonne->nom . ' ' . $abonne->prenom),
+            'cardno' => $abonne->card_id ?: '',
+        ];
+    }
+
+    private function logZkSyncAttempt(string $action, ?string $model, ?int $modelId, array $payload): void
+    {
+        try {
+            ActivityLog::create([
+                'user_id' => auth()->id(),
+                'action' => $action,
+                'model' => $model,
+                'model_id' => $modelId,
+                'new_data' => $payload,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Impossible d\'enregistrer le log ZKTeco: ' . $e->getMessage());
+        }
     }
 }

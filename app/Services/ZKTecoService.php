@@ -105,9 +105,18 @@ class ZKTecoService
      */
     public function syncUsersToDevice($users)
     {
+        $result = [
+            'success' => false,
+            'total' => is_countable($users) ? count($users) : 0,
+            'synced_count' => 0,
+            'failed_count' => 0,
+            'errors' => [],
+        ];
+
         try {
             if (!$this->connect()) {
-                return false;
+                $result['errors'][] = 'Connexion au terminal ZKTeco impossible.';
+                return $result;
             }
             
             $successCount = 0;
@@ -129,16 +138,24 @@ class ZKTecoService
                     
                 } catch (Exception $e) {
                     Log::error("Erreur ajout utilisateur {$user['name']}: " . $e->getMessage());
+                    $result['errors'][] = "Erreur ajout {$user['name']}: {$e->getMessage()}";
                 }
             }
             
             $this->disconnect();
-            return $successCount > 0;
+            $result['success'] = $successCount > 0;
+            $result['synced_count'] = $successCount;
+            $result['failed_count'] = max($result['total'] - $successCount, 0);
+
+            return $result;
             
         } catch (Exception $e) {
             Log::error("Erreur synchronisation ZKTeco: " . $e->getMessage());
             $this->disconnect();
-            return false;
+            $result['errors'][] = $e->getMessage();
+            $result['failed_count'] = $result['total'];
+
+            return $result;
         }
     }
     

@@ -5,9 +5,14 @@
 @section('content_header')
 <div class="d-flex justify-content-between align-items-center">
     <h1>Gestion des Abonnés</h1>
-    <button type="button" class="btn btn-success" data-toggle="modal" data-target="#addModal">
-        <i class="fas fa-plus"></i> Nouvel Abonné
-    </button>
+    <div class="d-flex align-items-center">
+        <button type="button" class="btn btn-outline-primary mr-2" data-toggle="modal" data-target="#syncZkModal">
+            <i class="fas fa-fingerprint"></i> Sync ZK F18
+        </button>
+        <button type="button" class="btn btn-success" data-toggle="modal" data-target="#addModal">
+            <i class="fas fa-plus"></i> Nouvel Abonné
+        </button>
+    </div>
 </div>
 @stop
 
@@ -428,6 +433,38 @@
             </div>
         </div>
     </div>
+    </div>
+
+<!-- MODAL SYNC ZK -->
+<div class="modal fade" id="syncZkModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-fingerprint"></i> Synchroniser vers ZK F18</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <form id="syncZkForm">
+                @csrf
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Quels abonnés voulez-vous envoyer vers la machine ?</label>
+                        <select name="sync_scope" class="form-control" required>
+                            <option value="actifs">Seulement les abonnés actifs / qui ont payé</option>
+                            <option value="all">Tous les abonnés</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        Les abonnés sans <code>uid</code> recevront automatiquement un UID basé sur leur ID avant l'envoi vers ZKTeco.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Lancer la synchronisation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 </div>
 @stop
 
@@ -644,6 +681,43 @@ $(document).ready(function() {
 
     $('#exportCSV').on('click', function() {
         window.location.href = "{{ route('abonnes.export') }}";
+    });
+
+    $('#syncZkForm').on('submit', function(e) {
+        e.preventDefault();
+
+        let form = $(this);
+        let btn = form.find('button[type="submit"]');
+        let originalText = btn.html();
+
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Synchronisation...');
+
+        $.ajax({
+            url: "{{ route('abonnes.sync-all-zk') }}",
+            type: "POST",
+            data: form.serialize(),
+            success: function(response) {
+                $('#syncZkModal').modal('hide');
+                if (response.success) {
+                    toastr.success(response.message || 'Synchronisation terminée');
+                } else {
+                    toastr.warning(response.message || 'La synchronisation n\'a pas abouti');
+                }
+                form[0].reset();
+            },
+            error: function(xhr) {
+                let message = 'Erreur lors de la synchronisation avec ZKTeco';
+
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    message = xhr.responseJSON.message;
+                }
+
+                toastr.error(message);
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
     });
 
     // Fonction debounce

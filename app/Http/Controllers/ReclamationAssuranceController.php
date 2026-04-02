@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ReclamationAssurance;
 use App\Models\AbonneAssurance;
+use App\Models\ReclamationAssurance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class ReclamationAssuranceController extends Controller
 {
@@ -18,31 +18,33 @@ class ReclamationAssuranceController extends Controller
         $approuvees = ReclamationAssurance::where('statut', 'approuve')->count();
         $remboursees = ReclamationAssurance::where('statut', 'rembourse')->count();
         $refusees = ReclamationAssurance::where('statut', 'refuse')->count();
-        
         $totalMontant = ReclamationAssurance::sum('montant_total');
-        $totalRemboursable = ReclamationAssurance::sum('montant_remboursable');
-        
+        $totalRemboursable = ReclamationAssurance::sum('montant_rembourse');
+
         $assurances = AbonneAssurance::with(['abonne', 'company'])
             ->where('statut', 'actif')
             ->get();
 
+        $selectedAssuranceId = $request->query('assurance_id');
+
         return view('reclamation_assurances.index', compact(
-            'totalReclamations', 
-            'enAttente', 
+            'totalReclamations',
+            'enAttente',
             'approuvees',
             'remboursees',
             'refusees',
             'totalMontant',
             'totalRemboursable',
-            'assurances'
+            'assurances',
+            'selectedAssuranceId'
         ));
     }
 
     public function getData(Request $request)
     {
-        $draw = $request->input('draw');
-        $start = $request->input('start');
-        $length = $request->input('length');
+        $draw = (int) $request->input('draw', 1);
+        $start = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 10);
         $search = $request->input('search.value');
         $statut = $request->input('filters.statut');
         $type = $request->input('filters.type');
@@ -50,160 +52,161 @@ class ReclamationAssuranceController extends Controller
         $dateFin = $request->input('filters.date_fin');
         $assuranceId = $request->input('filters.assurance_id');
 
-        $query = ReclamationAssurance::with(['abonneAssurance.abonne', 'abonneAssurance.company']);
+        $query = ReclamationAssurance::with(['abonne', 'company']);
 
-        if (!empty($search)) {
-            $query->where(function($q) use ($search) {
-                $q->whereHas('abonneAssurance.abonne', function($q2) use ($search) {
-                    $q2->where('nom', 'LIKE', "%{$search}%")
-                       ->orWhere('prenom', 'LIKE', "%{$search}%")
-                       ->orWhere('cin', 'LIKE', "%{$search}%");
-                })
-                ->orWhereHas('abonneAssurance.company', function($q2) use ($search) {
-                    $q2->where('nom', 'LIKE', "%{$search}%");
-                })
-                ->orWhere('notes', 'LIKE', "%{$search}%");
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('abonne', function ($q2) use ($search) {
+                    $q2->where('nom', 'like', "%{$search}%")
+                        ->orWhere('prenom', 'like', "%{$search}%")
+                        ->orWhere('cin', 'like', "%{$search}%");
+                })->orWhereHas('company', function ($q2) use ($search) {
+                    $q2->where('nom', 'like', "%{$search}%");
+                })->orWhere('notes', 'like', "%{$search}%");
             });
         }
 
-        if (!empty($statut)) {
+        if (! empty($statut)) {
             $query->where('statut', $statut);
         }
 
-        if (!empty($type)) {
+        if (! empty($type)) {
             $query->where('type', $type);
         }
 
-        if (!empty($dateDebut)) {
-            $query->where('date_reclamation', '>=', $dateDebut);
+        if (! empty($dateDebut)) {
+            $query->whereDate('date_reclamation', '>=', $dateDebut);
         }
 
-        if (!empty($dateFin)) {
-            $query->where('date_reclamation', '<=', $dateFin);
+        if (! empty($dateFin)) {
+            $query->whereDate('date_reclamation', '<=', $dateFin);
         }
 
-        if (!empty($assuranceId)) {
-            $query->where('abonne_assurance_id', $assuranceId);
+        if (! empty($assuranceId)) {
+            $assurance = AbonneAssurance::find($assuranceId);
+
+            if ($assurance) {
+                $query->where('abonne_id', $assurance->abonne_id)
+                    ->where('service_id', $assurance->service_id);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
-        $totalRecords = $query->count();
+        $recordsTotal = ReclamationAssurance::count();
+        $recordsFiltered = (clone $query)->count();
 
-        $reclamations = $query->skip($start)
+        $reclamations = $query->orderByDesc('date_reclamation')
+            ->skip($start)
             ->take($length)
-            ->orderBy('date_reclamation', 'desc')
             ->get();
 
         $data = [];
+
         foreach ($reclamations as $index => $reclamation) {
-            $pourcentage = $reclamation->pourcentage_remboursement;
-            
+            $abonneNom = trim(($reclamation->abonne->nom ?? '') . ' ' . ($reclamation->abonne->prenom ?? ''));
+            $companyNom = $reclamation->company->nom ?? '-';
+
             $data[] = [
                 'DT_RowIndex' => $start + $index + 1,
-                'id' => $reclamation->id,
-                'abonne' => $reclamation->abonneAssurance->abonne->nom . ' ' . 
-                           $reclamation->abonneAssurance->abonne->prenom,
-                'company' => $reclamation->abonneAssurance->company->nom,
-                'type' => '
-                    <span class="badge badge-info">' . $reclamation->type_text . '</span>',
+                'abonne' => $abonneNom !== '' ? e($abonneNom) : '-',
+                'company' => e($companyNom),
+                'type' => '<span class="badge badge-info">' . e($reclamation->type_text) . '</span>',
                 'montants' => '
                     <div class="text-right">
-                        <div><small>Total:</small> ' . number_format($reclamation->montant_total, 2) . ' DH</div>
-                        <div><small>Remboursable:</small> ' . number_format($reclamation->montant_remboursable, 2) . ' DH</div>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-success" 
-                                 style="width: ' . $pourcentage . '%" title="' . round($pourcentage, 1) . '%">
-                            </div>
-                        </div>
+                        <div><small>Total:</small> ' . number_format((float) $reclamation->montant_total, 2) . ' DH</div>
+                        <div><small>Remboursable:</small> ' . number_format((float) $reclamation->montant_rembourse, 2) . ' DH</div>
                     </div>',
                 'dates' => '
                     <div class="text-center">
-                        <div><small>Réclamation:</small> ' . $reclamation->date_reclamation->format('d/m/Y') . '</div>
-                        ' . ($reclamation->date_traitement ? 
-                            '<div><small>Traitement:</small> ' . $reclamation->date_traitement->format('d/m/Y') . '</div>' : 
-                            '') . '
+                        <div><small>Reclamation:</small> ' . optional($reclamation->date_reclamation)->format('d/m/Y') . '</div>
+                        ' . ($reclamation->date_traitement
+                            ? '<div><small>Traitement:</small> ' . $reclamation->date_traitement->format('d/m/Y') . '</div>'
+                            : '') . '
                     </div>',
                 'statut_badge' => '
-                    <span class="badge badge-' . $reclamation->statut_couleur . '">
-                        ' . $reclamation->statut_text . '
+                    <span class="badge badge-' . e($reclamation->statut_couleur) . '">
+                        ' . e($reclamation->statut_text) . '
                     </span>',
                 'action' => '
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-info view-btn" data-id="' . $reclamation->id . '">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn btn-warning edit-btn" data-id="' . $reclamation->id . '">
-                            <i class="fas fa-edit"></i>
-                        </button>
                         <button class="btn btn-success traiter-btn" data-id="' . $reclamation->id . '" title="Traiter">
                             <i class="fas fa-check"></i>
                         </button>
-                        ' . ($reclamation->justificatif_path ? 
-                            '<a href="' . $reclamation->justificatif_url . '" class="btn btn-primary" target="_blank" title="Justificatif">
+                        ' . ($reclamation->justificatif_path
+                            ? '<a href="' . e($reclamation->justificatif_url) . '" class="btn btn-primary" target="_blank" title="Justificatif">
                                 <i class="fas fa-file"></i>
-                            </a>' : '') . '
-                        <button class="btn btn-danger delete-btn" data-id="' . $reclamation->id . '">
+                            </a>'
+                            : '') . '
+                        <button class="btn btn-danger delete-btn" data-id="' . $reclamation->id . '" title="Supprimer">
                             <i class="fas fa-trash"></i>
                         </button>
-                    </div>'
+                    </div>',
             ];
         }
 
         return response()->json([
             'draw' => $draw,
-            'recordsTotal' => $totalRecords,
-            'recordsFiltered' => $totalRecords,
-            'data' => $data
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $data,
         ]);
+    }
+
+    public function show(ReclamationAssurance $reclamationAssurance)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $reclamationAssurance->load(['abonne', 'company']),
+        ]);
+    }
+
+    public function edit(ReclamationAssurance $reclamationAssurance)
+    {
+        return $this->show($reclamationAssurance);
     }
 
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'abonne_assurance_id' => 'required|exists:abonne_assurances,id',
+            'abonne_assurance_id' => 'required|exists:subscriptions,id',
             'type' => 'required|in:consultation,examen,medicament,rehabilitation',
             'montant_total' => 'required|numeric|min:0',
             'date_reclamation' => 'required|date',
             'justificatif' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'notes' => 'nullable|string'
+            'notes' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            $assurance = AbonneAssurance::findOrFail($request->abonne_assurance_id);
-            
-            // Calculer le montant remboursable selon le taux de couverture
-            $tauxCouverture = $assurance->company->taux_couverture;
-            $montantRemboursable = ($request->montant_total * $tauxCouverture) / 100;
-            
-            // Vérifier si le plafond est dépassé
-            $nouveauTotal = $assurance->montant_utilise + $montantRemboursable;
-            if ($nouveauTotal > $assurance->plafond_annuel) {
-                // Ajuster le montant remboursable pour ne pas dépasser le plafond
-                $montantRemboursable = max(0, $assurance->plafond_annuel - $assurance->montant_utilise);
-            }
+            $assurance = AbonneAssurance::with('company')->findOrFail($request->abonne_assurance_id);
+            $tauxCouverture = (float) ($assurance->company->taux_couverture ?? 100);
+            $montantRemboursable = ((float) $request->montant_total * $tauxCouverture) / 100;
+            $montantRemboursable = min($montantRemboursable, $assurance->solde);
 
             $data = [
-                'abonne_assurance_id' => $request->abonne_assurance_id,
+                'abonne_id' => $assurance->abonne_id,
+                'service_id' => $assurance->service_id,
                 'type' => $request->type,
                 'montant_total' => $request->montant_total,
-                'montant_remboursable' => $montantRemboursable,
+                'montant_rembourse' => $montantRemboursable,
                 'date_reclamation' => $request->date_reclamation,
                 'statut' => 'en_attente',
-                'notes' => $request->notes
+                'notes' => $request->notes,
             ];
 
             if ($request->hasFile('justificatif')) {
-                $path = $request->file('justificatif')->store('reclamations/justificatifs', 'public');
-                $data['justificatif_path'] = $path;
+                $data['justificatif_path'] = $request->file('justificatif')
+                    ->store('reclamations/justificatifs', 'public');
             }
 
             $reclamation = ReclamationAssurance::create($data);
@@ -212,15 +215,15 @@ class ReclamationAssuranceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Réclamation créée avec succès',
-                'reclamation' => $reclamation
+                'message' => 'Reclamation creee avec succes',
+                'reclamation' => $reclamation,
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -230,44 +233,46 @@ class ReclamationAssuranceController extends Controller
         $validator = Validator::make($request->all(), [
             'type' => 'required|in:consultation,examen,medicament,rehabilitation',
             'montant_total' => 'required|numeric|min:0',
-            'montant_remboursable' => 'required|numeric|min:0',
             'date_reclamation' => 'required|date',
             'justificatif' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'notes' => 'nullable|string'
+            'notes' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             $data = $request->except('justificatif');
-            
+
+            if ($request->filled('montant_remboursable')) {
+                $data['montant_rembourse'] = $request->input('montant_remboursable');
+            }
+
             if ($request->hasFile('justificatif')) {
-                // Supprimer l'ancien justificatif
                 if ($reclamationAssurance->justificatif_path) {
                     Storage::disk('public')->delete($reclamationAssurance->justificatif_path);
                 }
-                
-                $path = $request->file('justificatif')->store('reclamations/justificatifs', 'public');
-                $data['justificatif_path'] = $path;
+
+                $data['justificatif_path'] = $request->file('justificatif')
+                    ->store('reclamations/justificatifs', 'public');
             }
 
+            unset($data['montant_remboursable']);
             $reclamationAssurance->update($data);
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Réclamation mise à jour avec succès'
+                'message' => 'Reclamation mise a jour avec succes',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -277,47 +282,57 @@ class ReclamationAssuranceController extends Controller
         $validator = Validator::make($request->all(), [
             'statut' => 'required|in:approuve,refuse,rembourse',
             'date_traitement' => 'required|date',
-            'notes_traitement' => 'nullable|string'
+            'notes_traitement' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
+            $notes = trim((string) $reclamationAssurance->notes);
+            $traitementNotes = trim((string) $request->notes_traitement);
+            $blocTraitement = "Traitement\nStatut: {$request->statut}\nDate: {$request->date_traitement}";
+
+            if ($traitementNotes !== '') {
+                $blocTraitement .= "\nNotes: {$traitementNotes}";
+            }
+
             $reclamationAssurance->update([
                 'statut' => $request->statut,
                 'date_traitement' => $request->date_traitement,
-                'notes' => $reclamationAssurance->notes . "\n\n--- Traitement ---\n" . 
-                          'Statut: ' . $request->statut . "\n" .
-                          'Date: ' . $request->date_traitement . "\n" .
-                          'Notes: ' . ($request->notes_traitement ?? '')
+                'notes' => trim($notes . "\n\n" . $blocTraitement),
             ]);
 
-            // Si la réclamation est approuvée, mettre à jour le montant utilisé de l'assurance
-            if ($request->statut === 'approuve' || $request->statut === 'rembourse') {
-                $assurance = $reclamationAssurance->abonneAssurance;
-                $assurance->updateMontantUtilise();
+            if (in_array($request->statut, ['approuve', 'rembourse'], true)) {
+                $assurance = AbonneAssurance::where('abonne_id', $reclamationAssurance->abonne_id)
+                    ->where('service_id', $reclamationAssurance->service_id)
+                    ->latest('id')
+                    ->first();
+
+                if ($assurance) {
+                    $assurance->updateMontantUtilise();
+                }
             }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Réclamation traitée avec succès'
+                'message' => 'Reclamation traitee avec succes',
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -325,73 +340,83 @@ class ReclamationAssuranceController extends Controller
     public function destroy(ReclamationAssurance $reclamationAssurance)
     {
         try {
-            // Supprimer le justificatif si existe
             if ($reclamationAssurance->justificatif_path) {
                 Storage::disk('public')->delete($reclamationAssurance->justificatif_path);
             }
 
-            // Si la réclamation était approuvée, ajuster le montant utilisé
-            if ($reclamationAssurance->statut === 'approuve' || $reclamationAssurance->statut === 'rembourse') {
-                $assurance = $reclamationAssurance->abonneAssurance;
-                $assurance->update(['montant_utilise' => $assurance->montant_utilise - $reclamationAssurance->montant_remboursable]);
+            $assurance = null;
+
+            if (in_array($reclamationAssurance->statut, ['approuve', 'rembourse'], true)) {
+                $assurance = AbonneAssurance::where('abonne_id', $reclamationAssurance->abonne_id)
+                    ->where('service_id', $reclamationAssurance->service_id)
+                    ->latest('id')
+                    ->first();
             }
 
             $reclamationAssurance->delete();
-            
+
+            if ($assurance) {
+                $assurance->updateMontantUtilise();
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Réclamation supprimée avec succès'
+                'message' => 'Reclamation supprimee avec succes',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
 
     public function export(Request $request)
     {
-        $query = ReclamationAssurance::with(['abonneAssurance.abonne', 'abonneAssurance.company']);
-        
-        if ($request->has('statut') && $request->statut) {
+        $query = ReclamationAssurance::with(['abonne', 'company']);
+
+        if ($request->filled('statut')) {
             $query->where('statut', $request->statut);
         }
-        
-        if ($request->has('type') && $request->type) {
+
+        if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
-        
-        if ($request->has('date_debut') && $request->date_debut) {
-            $query->where('date_reclamation', '>=', $request->date_debut);
+
+        if ($request->filled('date_debut')) {
+            $query->whereDate('date_reclamation', '>=', $request->date_debut);
         }
-        
-        if ($request->has('date_fin') && $request->date_fin) {
-            $query->where('date_reclamation', '<=', $request->date_fin);
+
+        if ($request->filled('date_fin')) {
+            $query->whereDate('date_reclamation', '<=', $request->date_fin);
         }
-        
-        if ($request->has('assurance_id') && $request->assurance_id) {
-            $query->where('abonne_assurance_id', $request->assurance_id);
+
+        if ($request->filled('assurance_id')) {
+            $assurance = AbonneAssurance::find($request->assurance_id);
+
+            if ($assurance) {
+                $query->where('abonne_id', $assurance->abonne_id)
+                    ->where('service_id', $assurance->service_id);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
-        
-        $reclamations = $query->orderBy('date_reclamation', 'desc')->get();
-        
+
+        $reclamations = $query->orderByDesc('date_reclamation')->get();
         $fileName = 'reclamations_assurance_' . date('Y-m-d_H-i-s') . '.csv';
-        
+
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
         ];
-        
-        $callback = function() use ($reclamations) {
+
+        $callback = function () use ($reclamations) {
             $file = fopen('php://output', 'w');
-            
-            // En-têtes
+
             fputcsv($file, [
                 'ID',
-                'Date réclamation',
-                'Abonné',
+                'Date reclamation',
+                'Abonne',
                 'Compagnie',
                 'Type',
                 'Montant total (DH)',
@@ -399,31 +424,30 @@ class ReclamationAssuranceController extends Controller
                 'Pourcentage',
                 'Statut',
                 'Date traitement',
-                'Délai traitement (jours)',
-                'Notes'
+                'Delai traitement (jours)',
+                'Notes',
             ], ';');
-            
-            // Données
+
             foreach ($reclamations as $reclamation) {
                 fputcsv($file, [
                     $reclamation->id,
-                    $reclamation->date_reclamation->format('d/m/Y'),
-                    $reclamation->abonneAssurance->abonne->nom . ' ' . $reclamation->abonneAssurance->abonne->prenom,
-                    $reclamation->abonneAssurance->company->nom,
+                    optional($reclamation->date_reclamation)->format('d/m/Y'),
+                    trim(($reclamation->abonne->nom ?? '') . ' ' . ($reclamation->abonne->prenom ?? '')),
+                    $reclamation->company->nom ?? '',
                     $reclamation->type_text,
                     $reclamation->montant_total,
-                    $reclamation->montant_remboursable,
+                    $reclamation->montant_rembourse,
                     round($reclamation->pourcentage_remboursement, 2) . '%',
                     $reclamation->statut_text,
-                    $reclamation->date_traitement ? $reclamation->date_traitement->format('d/m/Y') : '',
+                    optional($reclamation->date_traitement)->format('d/m/Y'),
                     $reclamation->delai_traitement ?? '',
-                    $reclamation->notes ?? ''
+                    $reclamation->notes ?? '',
                 ], ';');
             }
-            
+
             fclose($file);
         };
-        
+
         return response()->stream($callback, 200, $headers);
     }
 }

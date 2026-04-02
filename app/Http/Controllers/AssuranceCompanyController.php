@@ -12,8 +12,8 @@ class AssuranceCompanyController extends Controller
     {
         $totalCompanies = AssuranceCompany::count();
         $totalActive = AssuranceCompany::active()->count();
-        $tauxMoyen = AssuranceCompany::avg('taux_couverture') ?? 0;
-        $delaiMoyen = AssuranceCompany::avg('delai_remboursement') ?? 0;
+        $tauxMoyen = $totalCompanies > 0 ? 100 : 0;
+        $delaiMoyen = 0;
 
         return view('assurance_companies.index', compact(
             'totalCompanies', 
@@ -37,8 +37,7 @@ class AssuranceCompanyController extends Controller
         if (!empty($search)) {
             $query->where(function($q) use ($search) {
                 $q->where('nom', 'LIKE', "%{$search}%")
-                  ->orWhere('telephone', 'LIKE', "%{$search}%")
-                  ->orWhere('email', 'LIKE', "%{$search}%");
+                  ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
@@ -98,11 +97,9 @@ class AssuranceCompanyController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'nom' => 'required|string|max:100|unique:assurance_companies,nom',
-            'telephone' => 'required|string|max:20',
-            'email' => 'nullable|email|unique:assurance_companies,email',
-            'taux_couverture' => 'required|numeric|min:0|max:100',
-            'delai_remboursement' => 'required|integer|min:1'
+            'nom' => 'required|string|max:100|unique:services,nom',
+            'description' => 'nullable|string',
+            'statut' => 'required|in:actif,inactif'
         ]);
 
         if ($validator->fails()) {
@@ -114,7 +111,12 @@ class AssuranceCompanyController extends Controller
         }
 
         try {
-            $company = AssuranceCompany::create($request->all());
+            $company = AssuranceCompany::create([
+                'nom' => $request->nom,
+                'description' => $request->description,
+                'statut' => $request->statut,
+                'type' => 'assurance',
+            ]);
             
             return response()->json([
                 'success' => true,
@@ -133,11 +135,9 @@ class AssuranceCompanyController extends Controller
     public function update(Request $request, AssuranceCompany $assuranceCompany)
     {
         $validator = Validator::make($request->all(), [
-            'nom' => 'required|string|max:100|unique:assurance_companies,nom,' . $assuranceCompany->id,
-            'telephone' => 'required|string|max:20',
-            'email' => 'nullable|email|unique:assurance_companies,email,' . $assuranceCompany->id,
-            'taux_couverture' => 'required|numeric|min:0|max:100',
-            'delai_remboursement' => 'required|integer|min:1'
+            'nom' => 'required|string|max:100|unique:services,nom,' . $assuranceCompany->id,
+            'description' => 'nullable|string',
+            'statut' => 'required|in:actif,inactif'
         ]);
 
         if ($validator->fails()) {
@@ -149,7 +149,12 @@ class AssuranceCompanyController extends Controller
         }
 
         try {
-            $assuranceCompany->update($request->all());
+            $assuranceCompany->update([
+                'nom' => $request->nom,
+                'description' => $request->description,
+                'statut' => $request->statut,
+                'type' => 'assurance',
+            ]);
             
             return response()->json([
                 'success' => true,

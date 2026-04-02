@@ -33,11 +33,16 @@ class Abonne extends Model
     ];
 
     /**
-     * Relation avec les abonnements
+     * Relation avec les subscriptions
      */
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class)->orderBy('date_fin', 'desc');
+    }
+
     public function abonnements(): HasMany
     {
-        return $this->hasMany(Abonnement::class)->orderBy('date_fin', 'desc');
+        return $this->subscriptions();
     }
 
     public function assurances(): HasMany
@@ -52,26 +57,36 @@ class Abonne extends Model
 
     public function paiements()
     {
-        return $this->hasManyThrough(Paiement::class, Abonnement::class);
+        return $this->hasManyThrough(Paiement::class, Subscription::class);
     }
 
     /**
      * Récupérer l'abonnement actif
      */
-    public function getAbonnementActifAttribute()
+    public function getSubscriptionActifAttribute()
     {
-        return $this->abonnements()
+        return $this->subscriptions()
             ->where('date_fin', '>=', Carbon::today())
             ->where('statut', 'actif')
             ->first();
     }
     //meme function
-    public function abonnementActif()
+    public function subscriptionActif()
     {
-        return $this->hasOne(Abonnement::class)
+        return $this->hasOne(Subscription::class)
             ->where('statut', 'actif')
             ->where('date_fin', '>=', now())
             ->orderBy('created_at', 'desc');
+    }
+
+    public function abonnementActif()
+    {
+        return $this->subscriptionActif();
+    }
+
+    public function getAbonnementActifAttribute()
+    {
+        return $this->getSubscriptionActifAttribute();
     }
     
 
@@ -80,7 +95,7 @@ class Abonne extends Model
      */
     public function getEstActifAttribute(): bool
     {
-        return $this->abonnements()
+        return $this->subscriptions()
             ->where('date_fin', '>=', Carbon::today())
             ->where('statut', 'actif')
             ->exists();
@@ -91,12 +106,12 @@ class Abonne extends Model
      */
     public function getDateFinAbonnementAttribute(): ?string
     {
-        $abonnement = $this->abonnements()
+        $subscription = $this->subscriptions()
             ->where('statut', 'actif')
             ->latest('date_fin')
             ->first();
         
-        return $abonnement ? $abonnement->date_fin->format('d/m/Y') : null;
+        return $subscription ? $subscription->date_fin->format('d/m/Y') : null;
     }
 
     /**
@@ -104,11 +119,11 @@ class Abonne extends Model
      */
     public function getTypeAbonnementAttribute(): ?string
     {
-        $abonnement = $this->abonnements()
+        $subscription = $this->subscriptions()
             ->where('statut', 'actif')
             ->first();
         
-        return $abonnement ? $abonnement->type_abonnement : null;
+        return $subscription ? $subscription->type_abonnement : null;
     }
 
     public function getFullNameAttribute()
@@ -134,10 +149,10 @@ class Abonne extends Model
      */
     public function scopeActifs($query)
     {
-        return $query->whereHas('abonnements', function($q) {
-            $q->where('statut', 'actif')
-              ->where('date_fin', '>=', Carbon::today());
-        });
+                return $query->whereHas('subscriptions', function($q) {
+                        $q->where('statut', 'actif')
+                            ->where('date_fin', '>=', Carbon::today());
+                });
     }
 
     /**
@@ -145,10 +160,10 @@ class Abonne extends Model
      */
     public function scopeInactifs($query)
     {
-        return $query->whereDoesntHave('abonnements', function($q) {
-            $q->where('statut', 'actif')
-              ->where('date_fin', '>=', Carbon::today());
-        });
+                return $query->whereDoesntHave('subscriptions', function($q) {
+                        $q->where('statut', 'actif')
+                            ->where('date_fin', '>=', Carbon::today());
+                });
     }
 
     /**
@@ -164,7 +179,7 @@ class Abonne extends Model
      */
     public function scopeExpireBientot($query, $jours = 7)
     {
-        return $query->whereHas('abonnements', function($q) use ($jours) {
+        return $query->whereHas('subscriptions', function($q) use ($jours) {
             $q->where('date_fin', '>=', Carbon::today())
               ->where('date_fin', '<=', Carbon::today()->addDays($jours))
               ->where('statut', 'actif');

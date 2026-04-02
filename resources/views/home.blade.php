@@ -48,7 +48,7 @@
             <div class="col-lg-3 col-6">
                 <div class="small-box bg-success">
                     <div class="inner">
-                        <h3>{{ number_format($stats['abonnements_actifs']) }}</h3>
+                        <h3>{{ number_format($stats['subscriptions_actifs']) }}</h3>
                         <p>Abonnements actifs</p>
                     </div>
                     <div class="icon">
@@ -256,7 +256,7 @@
                                 <i class="fas fa-exclamation-triangle mr-2"></i>
                                 Abonnements expirant bientôt
                             </h3>
-                            <span class="badge badge-warning">{{ $abonnements_expirant->count() }}</span>
+                            <span class="badge badge-warning">{{ $subscriptions_expirant->count() }}</span>
                         </div>
                         <div class="card-tools">
                             <button type="button" class="btn btn-tool" data-toggle="tooltip" title="Délai: 7 jours">
@@ -277,7 +277,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @forelse($abonnements_expirant as $abonnement)
+                                    @forelse($subscriptions_expirant as $abonnement)
                                     @php
                                         $joursRestants = today()->diffInDays($abonnement->date_fin, false);
                                     @endphp
@@ -332,12 +332,12 @@
                             </table>
                         </div>
                     </div>
-                    @if($abonnements_expirant->count() > 0)
+                    @if($subscriptions_expirant->count() > 0)
                     <div class="card-footer">
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">
                                 <i class="fas fa-info-circle mr-1"></i>
-                                {{ $abonnements_expirant->where('jours_restants', '<=', 3)->count() }} expiration(s) critique(s)
+                                {{ $subscriptions_expirant->where('jours_restants', '<=', 3)->count() }} expiration(s) critique(s)
                             </small>
                             <a href="#" class="btn btn-sm btn-outline-warning">
                                 Gérer les expirations <i class="fas fa-arrow-right ml-1"></i>
@@ -605,7 +605,7 @@
                                             <div class="progress-bar bg-danger" style="width: 100%"></div>
                                         </div>
                                         <span class="progress-description">
-                                            Dernière connexion: {{ auth()->user()->updated_at->format('H:i') }}
+                                            Dernière connexion: {{ optional(auth()->user()?->updated_at)->format('H:i') ?? '-' }}
                                         </span>
                                     </div>
                                 </div>

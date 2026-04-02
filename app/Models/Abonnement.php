@@ -1,50 +1,39 @@
 <?php
-
-namespace App\Models;
+// This file was renamed to Subscription.php. Please use App\Models\Subscription instead.
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Abonnement extends Model
+class Subscription extends Model
 {
     protected $fillable = [
-        'abonne_id', 'activite_id', 'type_abonnement', 
-        'date_debut', 'date_fin', 'montant', 'statut', 'zk_sync'
+        'abonne_id', 'service_id', 'type_abonnement', 
+        'date_debut', 'date_fin', 'montant', 'remise', 'montant_total', 'montant_paye', 'reste', 'statut', 'auto_renew', 'notes'
     ];
-
     protected $casts = [
         'date_debut' => 'date',
         'date_fin' => 'date',
         'montant' => 'decimal:2',
-        'zk_sync' => 'boolean'
+        'remise' => 'decimal:2',
+        'montant_total' => 'decimal:2',
+        'montant_paye' => 'decimal:2',
+        'reste' => 'decimal:2',
+        'auto_renew' => 'boolean'
     ];
+    public function paiements(): HasMany
+    {
+        return $this->hasMany(Paiement::class, 'subscription_id');
+    }
 
     public function abonne(): BelongsTo
     {
         return $this->belongsTo(Abonne::class);
     }
 
-    public function activite(): BelongsTo
+    public function service(): BelongsTo
     {
-        return $this->belongsTo(Activite::class);
-    }
-
-    public function paiements(): HasMany
-    {
-        return $this->hasMany(Paiement::class);
-    }
-
-    public function getJoursRestantsAttribute()
-    {
-        $now = now();
-        $dateFin = \Carbon\Carbon::parse($this->date_fin);
-        
-        if ($dateFin->lt($now)) {
-            return 0;
-        }
-        
-        return $now->diffInDays($dateFin);
+        return $this->belongsTo(Service::class);
     }
 
     public function getStatutCouleurAttribute()

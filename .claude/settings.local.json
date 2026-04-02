@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan:*)",
+      "Bash(curl -s http://127.0.0.1:8000/home)",
+      "Bash(curl -s http://127.0.0.1:8000/)",
+      "Bash(curl:*)",
+      "Bash(php -l app/Http/Controllers/PaiementController.php)",
+      "Bash(php -l app/Http/Controllers/AbonnementController.php)",
+      "Bash(php -l app/Http/Controllers/SettingController.php)",
+      "Bash(php -l app/Models/Paiement.php)",
+      "Bash(php -l app/Models/Subscription.php)",
+      "Bash(php artisan tinker --execute=\":*)",
+      "Bash(mysql -u root salle_sport -e \"SELECT COUNT\\(*\\) as total FROM coaches; SELECT COUNT\\(*\\) as total FROM abonnes; SELECT COUNT\\(*\\) as total FROM services; SELECT COUNT\\(*\\) as total FROM subscriptions; SELECT COUNT\\(*\\) as total FROM paiements;\")",
+      "Bash(php -r \":*)"
+    ]
+  }
+}

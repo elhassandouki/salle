@@ -19,7 +19,7 @@ class Coach extends Model
 
     public function activites(): HasMany
     {
-        return $this->hasMany(Activite::class);
+        return $this->hasMany(Service::class)->where('type', 'activite');
     }
 
     public function getActivitesActivesCountAttribute()

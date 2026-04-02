@@ -45,7 +45,8 @@ class AbonneAssuranceController extends Controller
 
         if (!empty($search)) {
             $query->where(function($q) use ($search) {
-                $q->where('numero_contrat', 'LIKE', "%{$search}%")
+                $q->where('notes', 'LIKE', "%{$search}%")
+                  ->orWhere('id', 'LIKE', "%{$search}%")
                   ->orWhereHas('abonne', function($q2) use ($search) {
                       $q2->where('nom', 'LIKE', "%{$search}%")
                          ->orWhere('prenom', 'LIKE', "%{$search}%")
@@ -66,7 +67,7 @@ class AbonneAssuranceController extends Controller
         }
 
         if (!empty($companyId)) {
-            $query->where('assurance_company_id', $companyId);
+            $query->where('service_id', $companyId);
         }
 
         $totalRecords = $query->count();
@@ -140,8 +141,8 @@ class AbonneAssuranceController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'abonne_id' => 'required|exists:abonnes,id',
-            'assurance_company_id' => 'required|exists:assurance_companies,id',
-            'numero_contrat' => 'required|string|max:100',
+            'assurance_company_id' => 'required|exists:services,id',
+            'numero_contrat' => 'nullable|string|max:100',
             'date_debut' => 'required|date',
             'date_fin' => 'required|date|after_or_equal:date_debut',
             'plafond_annuel' => 'required|numeric|min:0',
@@ -160,7 +161,7 @@ class AbonneAssuranceController extends Controller
         try {
             // Vérifier si l'abonné a déjà une assurance active avec cette compagnie
             $existing = AbonneAssurance::where('abonne_id', $request->abonne_id)
-                ->where('assurance_company_id', $request->assurance_company_id)
+                ->where('service_id', $request->assurance_company_id)
                 ->where('statut', 'actif')
                 ->exists();
 
@@ -173,14 +174,16 @@ class AbonneAssuranceController extends Controller
 
             $assurance = AbonneAssurance::create([
                 'abonne_id' => $request->abonne_id,
-                'assurance_company_id' => $request->assurance_company_id,
-                'numero_contrat' => $request->numero_contrat,
+                'service_id' => $request->assurance_company_id,
+                'type_abonnement' => 'annuel',
                 'date_debut' => $request->date_debut,
                 'date_fin' => $request->date_fin,
-                'plafond_annuel' => $request->plafond_annuel,
-                'montant_utilise' => 0,
+                'montant' => $request->plafond_annuel,
+                'montant_total' => $request->plafond_annuel,
+                'montant_paye' => 0,
+                'reste' => $request->plafond_annuel,
                 'statut' => $request->statut,
-                'notes' => $request->notes
+                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . ($request->notes ?? ''))
             ]);
             
             return response()->json([
@@ -217,7 +220,15 @@ class AbonneAssuranceController extends Controller
         }
 
         try {
-            $abonneAssurance->update($request->all());
+            $abonneAssurance->update([
+                'date_debut' => $request->date_debut,
+                'date_fin' => $request->date_fin,
+                'montant' => $request->plafond_annuel,
+                'montant_total' => $request->plafond_annuel,
+                'reste' => max(0, $request->plafond_annuel - $abonneAssurance->montant_paye),
+                'statut' => $request->statut,
+                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . ($request->notes ?? ''))
+            ]);
             
             return response()->json([
                 'success' => true,
@@ -314,14 +325,16 @@ class AbonneAssuranceController extends Controller
             // Créer la nouvelle assurance
             $nouvelleAssurance = AbonneAssurance::create([
                 'abonne_id' => $abonneAssurance->abonne_id,
-                'assurance_company_id' => $abonneAssurance->assurance_company_id,
-                'numero_contrat' => $request->numero_contrat ?? 'REN-' . $abonneAssurance->numero_contrat,
+                'service_id' => $abonneAssurance->service_id,
+                'type_abonnement' => 'annuel',
                 'date_debut' => now(),
                 'date_fin' => $request->date_fin,
-                'plafond_annuel' => $request->plafond_annuel,
-                'montant_utilise' => 0,
+                'montant' => $request->plafond_annuel,
+                'montant_total' => $request->plafond_annuel,
+                'montant_paye' => 0,
+                'reste' => $request->plafond_annuel,
                 'statut' => 'actif',
-                'notes' => 'Renouvellement de l\'assurance ' . $abonneAssurance->numero_contrat
+                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . 'Renouvellement de l\'assurance ' . $abonneAssurance->numero_contrat)
             ]);
 
             DB::commit();
@@ -354,7 +367,7 @@ class AbonneAssuranceController extends Controller
         }
         
         if ($request->has('company_id') && $request->company_id) {
-            $query->where('assurance_company_id', $request->company_id);
+            $query->where('service_id', $request->company_id);
         }
         
         $assurances = $query->orderBy('date_debut', 'desc')->get();

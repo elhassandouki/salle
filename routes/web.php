@@ -3,9 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\AbonneController;
+use App\Http\Controllers\AbonnementController;
 use App\Http\Controllers\ActiviteController;
 use App\Http\Controllers\CoachController;
-use App\Http\Controllers\AbonnementController;
 use App\Http\Controllers\PaiementController;
 use App\Http\Controllers\PointageController;
 use App\Http\Controllers\AssuranceCompanyController;
@@ -20,6 +20,7 @@ use App\Http\Controllers\SettingController;
 */
 
 // Route d'accueil
+Route::get('/', [HomeController::class, 'index'])->name('root');
 Route::get('/home', [HomeController::class, 'index'])->name('home');
 
 // ==================== ROUTES POUR LES ABONNÉS ====================
@@ -30,6 +31,7 @@ Route::get('/zk-status', [AbonneController::class, 'checkZkStatus'])->name('zk.s
 Route::prefix('abonnes')->name('abonnes.')->group(function () {
     Route::get('/', [AbonneController::class, 'index'])->name('index');
     Route::get('/getData', [AbonneController::class, 'getData'])->name('getData');
+    Route::post('/sync-zk', [AbonneController::class, 'syncAllZKTeco'])->name('sync-all-zk');
     Route::post('/', [AbonneController::class, 'store'])->name('store');
     Route::get('/{abonne}', [AbonneController::class, 'show'])->name('show');
     Route::get('/{abonne}/edit', [AbonneController::class, 'edit'])->name('edit');
@@ -43,6 +45,7 @@ Route::prefix('abonnes')->name('abonnes.')->group(function () {
 Route::prefix('activites')->name('activites.')->group(function () {
     Route::get('/', [ActiviteController::class, 'index'])->name('index');
     Route::get('/getData', [ActiviteController::class, 'getData'])->name('getData');
+    Route::get('/export', [ActiviteController::class, 'export'])->name('export');
     Route::post('/', [ActiviteController::class, 'store'])->name('store');
     Route::get('/{activite}', [ActiviteController::class, 'show'])->name('show');
     Route::get('/{activite}/edit', [ActiviteController::class, 'edit'])->name('edit');
@@ -51,7 +54,6 @@ Route::prefix('activites')->name('activites.')->group(function () {
     
     // Routes supplémentaires
     Route::get('/{activite}/get-prix', [ActiviteController::class, 'getPrix'])->name('get-prix');
-    Route::get('/export', [ActiviteController::class, 'export'])->name('export');
 });
 
 // ==================== ROUTES POUR LES COACHS ====================
@@ -68,19 +70,32 @@ Route::prefix('coaches')->name('coaches.')->group(function () {
     Route::get('/export', [CoachController::class, 'export'])->name('export');
 });
 
-// ==================== ROUTES POUR LES ABONNEMENTS ====================
+// ==================== ROUTES POUR LES SUBSCRIPTIONS ====================
+Route::prefix('subscriptions')->name('subscriptions.')->group(function () {
+    Route::get('/', [AbonnementController::class, 'index'])->name('index');
+    Route::get('/getData', [AbonnementController::class, 'getData'])->name('getData');
+    Route::post('/', [AbonnementController::class, 'store'])->name('store');
+    Route::get('/{subscription}', [AbonnementController::class, 'show'])->name('show');
+    Route::get('/{subscription}/edit', [AbonnementController::class, 'edit'])->name('edit');
+    Route::put('/{subscription}', [AbonnementController::class, 'update'])->name('update');
+    Route::delete('/{subscription}', [AbonnementController::class, 'destroy'])->name('destroy');
+    
+    // Routes supplémentaires
+    Route::post('/{subscription}/renew', [AbonnementController::class, 'renew'])->name('renew');
+    Route::post('/{subscription}/change-status', [AbonnementController::class, 'changeStatus'])->name('change-status');
+    Route::get('/export', [AbonnementController::class, 'export'])->name('export');
+});
+
 Route::prefix('abonnements')->name('abonnements.')->group(function () {
     Route::get('/', [AbonnementController::class, 'index'])->name('index');
     Route::get('/getData', [AbonnementController::class, 'getData'])->name('getData');
     Route::post('/', [AbonnementController::class, 'store'])->name('store');
-    Route::get('/{abonnement}', [AbonnementController::class, 'show'])->name('show');
-    Route::get('/{abonnement}/edit', [AbonnementController::class, 'edit'])->name('edit');
-    Route::put('/{abonnement}', [AbonnementController::class, 'update'])->name('update');
-    Route::delete('/{abonnement}', [AbonnementController::class, 'destroy'])->name('destroy');
-    
-    // Routes supplémentaires
-    Route::post('/{abonnement}/renouveler', [AbonnementController::class, 'renouveler'])->name('renouveler');
-    Route::post('/{abonnement}/changer-statut', [AbonnementController::class, 'changerStatut'])->name('changer-statut');
+    Route::get('/{subscription}', [AbonnementController::class, 'show'])->name('show');
+    Route::get('/{subscription}/edit', [AbonnementController::class, 'edit'])->name('edit');
+    Route::put('/{subscription}', [AbonnementController::class, 'update'])->name('update');
+    Route::delete('/{subscription}', [AbonnementController::class, 'destroy'])->name('destroy');
+    Route::post('/{subscription}/renew', [AbonnementController::class, 'renew'])->name('renew');
+    Route::post('/{subscription}/change-status', [AbonnementController::class, 'changeStatus'])->name('change-status');
     Route::get('/export', [AbonnementController::class, 'export'])->name('export');
 });
 
@@ -145,15 +160,15 @@ Route::prefix('abonne-assurances')->name('abonne_assurances.')->group(function (
 Route::prefix('reclamation-assurances')->name('reclamation_assurances.')->group(function () {
     Route::get('/', [ReclamationAssuranceController::class, 'index'])->name('index');
     Route::get('/getData', [ReclamationAssuranceController::class, 'getData'])->name('getData');
+    Route::get('/export', [ReclamationAssuranceController::class, 'export'])->name('export');
     Route::post('/', [ReclamationAssuranceController::class, 'store'])->name('store');
-    Route::get('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'show'])->name('show');
-    Route::get('/{reclamation_assurance}/edit', [ReclamationAssuranceController::class, 'edit'])->name('edit');
-    Route::put('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'update'])->name('update');
-    Route::delete('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'destroy'])->name('destroy');
+    Route::get('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'show'])->whereNumber('reclamation_assurance')->name('show');
+    Route::get('/{reclamation_assurance}/edit', [ReclamationAssuranceController::class, 'edit'])->whereNumber('reclamation_assurance')->name('edit');
+    Route::put('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'update'])->whereNumber('reclamation_assurance')->name('update');
+    Route::delete('/{reclamation_assurance}', [ReclamationAssuranceController::class, 'destroy'])->whereNumber('reclamation_assurance')->name('destroy');
     
     // Routes supplémentaires
-    Route::post('/{reclamation_assurance}/traiter', [ReclamationAssuranceController::class, 'traiter'])->name('traiter');
-    Route::get('/export', [ReclamationAssuranceController::class, 'export'])->name('export');
+    Route::post('/{reclamation_assurance}/traiter', [ReclamationAssuranceController::class, 'traiter'])->whereNumber('reclamation_assurance')->name('traiter');
 });
 
 // ==================== ROUTES POUR LES SETTINGS ====================
@@ -184,7 +199,7 @@ Route::prefix('rapports')->name('rapports.')->group(function () {
     Route::get('/financier', [HomeController::class, 'rapportFinancier'])->name('financier');
     Route::get('/frequentation', [HomeController::class, 'rapportFrequentation'])->name('frequentation');
     Route::get('/assurances', [HomeController::class, 'rapportAssurances'])->name('assurances');
-    Route::get('/abonnements', [HomeController::class, 'rapportAbonnements'])->name('abonnements');
+    Route::get('/subscriptions', [HomeController::class, 'rapportSubscriptions'])->name('subscriptions');
 });
 
 // ==================== ROUTES POUR L'IMPORT/EXPORT ====================

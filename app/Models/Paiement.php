@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Paiement extends Model
 {
     protected $fillable = [
-        'abonnement_id', 'montant', 'mode_paiement', 
+        'subscription_id', 'montant', 'mode_paiement', 
         'date_paiement', 'reference', 'imprimante_id', 'notes'
     ];
 
@@ -17,9 +17,9 @@ class Paiement extends Model
         'date_paiement' => 'datetime'
     ];
 
-    public function abonnement(): BelongsTo
+    public function subscription(): BelongsTo
     {
-        return $this->belongsTo(Abonnement::class);
+        return $this->belongsTo(Subscription::class, 'subscription_id');
     }
 
     public function getModePaiementTextAttribute()

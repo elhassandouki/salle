@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('email')->nullable();
             $table->string('specialite')->nullable();
             $table->decimal('salaire', 10, 2)->nullable();
+            $table->date('date_embauche')->nullable();
+            $table->string('statut')->default('actif');
             $table->timestamps();
         });
 
@@ -78,8 +80,8 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Payments
-        Schema::create('payments', function (Blueprint $table) {
+        // Paiements
+        Schema::create('paiements', function (Blueprint $table) {
             $table->id();
             $table->foreignId('subscription_id')->constrained()->cascadeOnDelete();
             $table->decimal('montant', 10, 2);
@@ -158,7 +160,7 @@ return new class extends Migration
         Schema::dropIfExists('depenses');
         Schema::dropIfExists('reclamations');
         Schema::dropIfExists('pointages');
-        Schema::dropIfExists('payments');
+        Schema::dropIfExists('paiements');
         Schema::dropIfExists('subscriptions');
         Schema::dropIfExists('services');
         Schema::dropIfExists('abonnes');
