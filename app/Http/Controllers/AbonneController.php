@@ -3,16 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Abonne;
-use App\Models\Abonnement;
 use App\Models\ActivityLog;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
-use Yajra\DataTables\Facades\DataTables;
 use App\Models\Pointage;
 use App\Services\ZKTecoService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class AbonneController extends Controller
 {
@@ -653,6 +651,97 @@ public function getData(Request $request)
         return response()->stream($callback, 200, $headers);
     }
 
+    public function import(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:csv,txt|max:5120',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Fichier import invalide.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $file = $request->file('file');
+
+        try {
+            $rows = $this->parseImportFile($file->getRealPath());
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Le fichier est vide ou ne contient pas de donnees exploitables.',
+                ], 422);
+            }
+
+            $header = array_shift($rows);
+            $normalizedHeader = array_map([$this, 'normalizeImportHeader'], $header);
+            $imported = 0;
+            $updated = 0;
+            $skipped = [];
+
+            DB::beginTransaction();
+
+            foreach ($rows as $index => $row) {
+                if ($this->rowIsEmpty($row)) {
+                    continue;
+                }
+
+                $mappedRow = $this->mapImportRow($normalizedHeader, $row);
+                $rowNumber = $index + 2;
+                $preparedRow = $this->prepareImportRow($mappedRow);
+
+                if (empty($preparedRow['nom']) || empty($preparedRow['prenom'])) {
+                    $skipped[] = "Ligne {$rowNumber}: nom ou prenom manquant.";
+                    continue;
+                }
+
+                if (
+                    empty($preparedRow['telephone']) &&
+                    empty($preparedRow['cin']) &&
+                    empty($preparedRow['email']) &&
+                    empty($preparedRow['card_id'])
+                ) {
+                    $skipped[] = "Ligne {$rowNumber}: aucun identifiant exploitable.";
+                    continue;
+                }
+
+                $abonne = $this->findExistingAbonneForImport($preparedRow);
+
+                if ($abonne) {
+                    $abonne->fill($preparedRow)->save();
+                    $updated++;
+                    continue;
+                }
+
+                Abonne::create($preparedRow);
+                $imported++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Import termine avec succes.',
+                'data' => [
+                    'imported' => $imported,
+                    'updated' => $updated,
+                    'skipped' => $skipped,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => "Erreur lors de l'import: " . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getAbonnesForZKTeco(Request $request)
     {
         $scope = $request->input('sync_scope', 'actifs');
@@ -721,5 +810,144 @@ public function getData(Request $request)
         } catch (\Throwable $e) {
             \Log::warning('Impossible d\'enregistrer le log ZKTeco: ' . $e->getMessage());
         }
+    }
+
+    private function parseImportFile(string $path): array
+    {
+        $lines = file($path, FILE_IGNORE_NEW_LINES);
+
+        if ($lines === false || $lines === []) {
+            return [];
+        }
+
+        $delimiter = $this->detectImportDelimiter($lines[0]);
+        $rows = [];
+
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $rows[] = str_getcsv($trimmed, $delimiter);
+        }
+
+        return $rows;
+    }
+
+    private function detectImportDelimiter(string $line): string
+    {
+        return substr_count($line, ';') > substr_count($line, ',') ? ';' : ',';
+    }
+
+    private function normalizeImportHeader(string $header): string
+    {
+        $normalized = strtolower(trim(str_replace("\xEF\xBB\xBF", '', $header)));
+        $normalized = str_replace(
+            ['"', "'", ' ', '-', '.', '(', ')', '/', '\\'],
+            '',
+            $normalized
+        );
+
+        return match ($normalized) {
+            'fullname', 'nomcomplet' => 'nom_complet',
+            'firstname', 'prenom' => 'prenom',
+            'lastname', 'nom' => 'nom',
+            'tele', 'telephone', 'phone', 'mobile' => 'telephone',
+            'cardid', 'carte', 'carten', 'cartenumero' => 'card_id',
+            'datenaissance', 'naissance', 'birthdate' => 'date_naissance',
+            default => $normalized,
+        };
+    }
+
+    private function mapImportRow(array $headers, array $row): array
+    {
+        $mapped = [];
+
+        foreach ($headers as $index => $header) {
+            if ($header === '') {
+                continue;
+            }
+
+            $mapped[$header] = isset($row[$index]) ? trim((string) $row[$index]) : null;
+        }
+
+        return $mapped;
+    }
+
+    private function prepareImportRow(array $row): array
+    {
+        if (! empty($row['nom_complet']) && (empty($row['nom']) || empty($row['prenom']))) {
+            $parts = preg_split('/\s+/', trim((string) $row['nom_complet']));
+            $row['nom'] = $row['nom'] ?? array_shift($parts);
+            $row['prenom'] = $row['prenom'] ?? implode(' ', $parts);
+        }
+
+        $data = array_filter([
+            'nom' => $row['nom'] ?? null,
+            'prenom' => $row['prenom'] ?? null,
+            'cin' => $row['cin'] ?? null,
+            'card_id' => $row['card_id'] ?? null,
+            'telephone' => $row['telephone'] ?? null,
+            'email' => $row['email'] ?? null,
+            'sexe' => $this->normalizeGender($row['sexe'] ?? null),
+            'date_naissance' => $this->normalizeImportDate($row['date_naissance'] ?? null),
+            'lieu_naissance' => $row['lieu_naissance'] ?? null,
+            'nationalite' => $row['nationalite'] ?? null,
+            'situation_familiale' => $row['situation_familiale'] ?? null,
+            'profession' => $row['profession'] ?? null,
+            'adresse' => $row['adresse'] ?? null,
+            'notes' => $row['notes'] ?? null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        return $data;
+    }
+
+    private function normalizeGender(?string $gender): ?string
+    {
+        if ($gender === null || trim($gender) === '') {
+            return null;
+        }
+
+        return match (strtolower(trim($gender))) {
+            'homme', 'h', 'm', 'male' => 'Homme',
+            'femme', 'f', 'w', 'female' => 'Femme',
+            default => null,
+        };
+    }
+
+    private function normalizeImportDate(?string $value): ?string
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function rowIsEmpty(array $row): bool
+    {
+        foreach ($row as $value) {
+            if (trim((string) $value) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function findExistingAbonneForImport(array $data): ?Abonne
+    {
+        return Abonne::query()
+            ->when(! empty($data['cin']), fn ($query) => $query->orWhere('cin', $data['cin']))
+            ->when(! empty($data['email']), fn ($query) => $query->orWhere('email', $data['email']))
+            ->when(! empty($data['card_id']), fn ($query) => $query->orWhere('card_id', $data['card_id']))
+            ->when(! empty($data['telephone']), fn ($query) => $query->orWhere('telephone', $data['telephone']))
+            ->first();
     }
 }

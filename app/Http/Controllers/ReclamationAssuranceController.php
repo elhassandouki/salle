@@ -169,7 +169,7 @@ class ReclamationAssuranceController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'abonne_assurance_id' => 'required|exists:subscriptions,id',
+            'abonne_assurance_id' => 'required|integer',
             'type' => 'required|in:consultation,examen,medicament,rehabilitation',
             'montant_total' => 'required|numeric|min:0',
             'date_reclamation' => 'required|date',
@@ -188,7 +188,20 @@ class ReclamationAssuranceController extends Controller
         try {
             DB::beginTransaction();
 
-            $assurance = AbonneAssurance::with('company')->findOrFail($request->abonne_assurance_id);
+            $assurance = AbonneAssurance::with('company')->find($request->abonne_assurance_id);
+
+            if (! $assurance) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation error',
+                    'errors' => [
+                        'abonne_assurance_id' => ['L assurance selectionnee est invalide.'],
+                    ],
+                ], 422);
+            }
+
             $tauxCouverture = (float) ($assurance->company->taux_couverture ?? 100);
             $montantRemboursable = ((float) $request->montant_total * $tauxCouverture) / 100;
             $montantRemboursable = min($montantRemboursable, $assurance->solde);
