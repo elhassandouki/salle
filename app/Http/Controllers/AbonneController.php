@@ -482,6 +482,139 @@ public function getData(Request $request)
     }
 
     /**
+     * Importer directement les utilisateurs existants sur la machine ZKTeco.
+     */
+    public function importZkUsers(ZKTecoService $zkService)
+    {
+        $importTrace = ['import_request_received'];
+        $deviceResult = $zkService->getUsersFromDeviceDetailed();
+        $importTrace = array_merge($importTrace, $deviceResult['trace'] ?? []);
+
+        if (! ($deviceResult['success'] ?? false)) {
+            $this->logZkSyncAttempt('import_zkteco_users', 'Abonne', null, [
+                'current_step' => $deviceResult['step'] ?? 'device_read_failed',
+                'trace' => $importTrace,
+                'result' => $deviceResult,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Import ZKTeco interrompu a l etape: ' . ($deviceResult['step'] ?? 'device_read_failed') . '. ' . ($deviceResult['message'] ?? ''),
+                'data' => [
+                    'current_step' => $deviceResult['step'] ?? 'device_read_failed',
+                    'trace' => $importTrace,
+                ],
+            ], 422);
+        }
+
+        $deviceUsers = $deviceResult['users'] ?? [];
+
+        if ($deviceUsers === []) {
+            $importTrace[] = 'no_users_found';
+            $this->logZkSyncAttempt('import_zkteco_users', 'Abonne', null, [
+                'current_step' => 'no_users_found',
+                'trace' => $importTrace,
+                'result' => $deviceResult,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Import ZKTeco arrete: aucun utilisateur trouve sur la machine.',
+                'data' => [
+                    'current_step' => 'no_users_found',
+                    'trace' => $importTrace,
+                ],
+            ], 422);
+        }
+
+        $imported = 0;
+        $skipped = 0;
+        $importTrace[] = 'database_transaction_started';
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($deviceUsers as $deviceUser) {
+                $importTrace[] = 'processing_device_user';
+                $uid = $this->sanitizeZkValue($deviceUser['uid'] ?? $deviceUser['userid'] ?? null);
+                $cardId = $this->sanitizeZkValue($deviceUser['cardno'] ?? $deviceUser['card_id'] ?? null);
+                $fullName = $this->sanitizeZkValue($deviceUser['name'] ?? null) ?: 'Utilisateur ZK';
+
+                if ($uid === null && $cardId === null) {
+                    $importTrace[] = 'user_skipped_missing_identifiers';
+                    $skipped++;
+                    continue;
+                }
+
+                $alreadyExists = Abonne::query()
+                    ->when($uid !== null, fn ($query) => $query->orWhere('uid', $uid))
+                    ->when($cardId !== null, fn ($query) => $query->orWhere('card_id', $cardId))
+                    ->exists();
+
+                if ($alreadyExists) {
+                    $importTrace[] = 'user_skipped_duplicate';
+                    $skipped++;
+                    continue;
+                }
+
+                [$nom, $prenom] = $this->splitImportedFullName($fullName);
+                $importTrace[] = 'sql_insert_started';
+
+                Abonne::create([
+                    'uid' => $uid,
+                    'card_id' => $cardId,
+                    'nom' => $nom,
+                    'prenom' => $prenom,
+                ]);
+
+                $importTrace[] = 'sql_insert_ok';
+                $imported++;
+            }
+
+            DB::commit();
+            $importTrace[] = 'database_commit_ok';
+            $this->logZkSyncAttempt('import_zkteco_users', 'Abonne', null, [
+                'current_step' => 'database_commit_ok',
+                'trace' => $importTrace,
+                'summary' => [
+                    'imported' => $imported,
+                    'skipped' => $skipped,
+                    'total' => count($deviceUsers),
+                ],
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$imported} abonnes importes depuis la machine.",
+                'data' => [
+                    'imported' => $imported,
+                    'skipped' => $skipped,
+                    'total' => count($deviceUsers),
+                    'current_step' => 'database_commit_ok',
+                    'trace' => $importTrace,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            $importTrace[] = 'database_rollback';
+            $this->logZkSyncAttempt('import_zkteco_users', 'Abonne', null, [
+                'current_step' => 'database_rollback',
+                'trace' => $importTrace,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => "Erreur lors de l'import depuis ZKTeco a l etape database_rollback: " . $e->getMessage(),
+                'data' => [
+                    'current_step' => 'database_rollback',
+                    'trace' => $importTrace,
+                ],
+            ], 500);
+        }
+    }
+
+    /**
      * Ajouter un abonnement à un abonné
      */
     public function ajouterAbonnement(Request $request, $id)
@@ -949,5 +1082,35 @@ public function getData(Request $request)
             ->when(! empty($data['card_id']), fn ($query) => $query->orWhere('card_id', $data['card_id']))
             ->when(! empty($data['telephone']), fn ($query) => $query->orWhere('telephone', $data['telephone']))
             ->first();
+    }
+
+    private function sanitizeZkValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $stringValue = trim((string) $value);
+
+        if ($stringValue === '' || $stringValue === '0') {
+            return null;
+        }
+
+        return $stringValue;
+    }
+
+    private function splitImportedFullName(string $fullName): array
+    {
+        $fullName = trim(preg_replace('/\s+/', ' ', $fullName) ?? '');
+
+        if ($fullName === '') {
+            return ['Utilisateur', 'ZK'];
+        }
+
+        $parts = explode(' ', $fullName);
+        $nom = array_shift($parts) ?: 'Utilisateur';
+        $prenom = trim(implode(' ', $parts));
+
+        return [$nom, $prenom !== '' ? $prenom : 'ZK'];
     }
 }

@@ -6,6 +6,9 @@
 <div class="d-flex justify-content-between align-items-center">
     <h1>Gestion des Abonnés</h1>
     <div class="d-flex align-items-center">
+        <button type="button" class="btn btn-outline-success mr-2" data-toggle="modal" data-target="#importZkModal">
+            <i class="fas fa-file-import"></i> Import depuis ZK
+        </button>
         <button type="button" class="btn btn-outline-primary mr-2" data-toggle="modal" data-target="#syncZkModal">
             <i class="fas fa-fingerprint"></i> Sync ZK F18
         </button>
@@ -414,6 +417,30 @@
     </div>
 </div>
 
+<!-- MODAL IMPORT ZK -->
+<div class="modal fade" id="importZkModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-file-import"></i> Importer depuis ZK F18</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <form id="importZkForm">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-info mb-0">
+                        Cette action va lire les utilisateurs presents dans la machine puis ajouter seulement ceux qui n'existent pas encore dans la table des abonnes.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Importer maintenant</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL SUPPRESSION -->
 <div class="modal fade" id="deleteModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
@@ -681,6 +708,52 @@ $(document).ready(function() {
 
     $('#exportCSV').on('click', function() {
         window.location.href = "{{ route('abonnes.export') }}";
+    });
+
+    $('#importZkForm').on('submit', function(e) {
+        e.preventDefault();
+
+        let form = $(this);
+        let btn = form.find('button[type="submit"]');
+        let originalText = btn.html();
+
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Import...');
+
+        $.ajax({
+            url: "{{ route('abonnes.import-zk-users') }}",
+            type: "POST",
+            data: form.serialize(),
+            success: function(response) {
+                $('#importZkModal').modal('hide');
+                loadData(1);
+                const step = response.data && response.data.current_step ? ' [step: ' + response.data.current_step + ']' : '';
+                toastr.success((response.message || 'Import termine') + step);
+                if (response.data && response.data.trace) {
+                    console.log('ZK import trace:', response.data.trace);
+                }
+            },
+            error: function(xhr) {
+                let message = "Erreur lors de l'import depuis la machine ZKTeco";
+                let step = '';
+
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    message = xhr.responseJSON.message;
+                }
+
+                if (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.current_step) {
+                    step = ' [step: ' + xhr.responseJSON.data.current_step + ']';
+                }
+
+                if (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.trace) {
+                    console.error('ZK import trace:', xhr.responseJSON.data.trace);
+                }
+
+                toastr.error(message + step);
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
     });
 
     $('#syncZkForm').on('submit', function(e) {

@@ -30,6 +30,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('abonnes')->name('abonnes.')->group(function () {
         Route::get('/', [AbonneController::class, 'index'])->name('index');
         Route::get('/getData', [AbonneController::class, 'getData'])->name('getData');
+        Route::post('/import-zk-users', [AbonneController::class, 'importZkUsers'])->name('import-zk-users');
         Route::post('/sync-zk', [AbonneController::class, 'syncAllZKTeco'])->name('sync-all-zk');
         Route::post('/', [AbonneController::class, 'store'])->name('store');
         Route::get('/export', [AbonneController::class, 'export'])->name('export');

@@ -99,6 +99,80 @@ class ZKTecoService
             return [];
         }
     }
+
+    /**
+     * Récupérer les utilisateurs enregistrés sur l'appareil.
+     */
+    public function getUsersFromDevice(): array
+    {
+        return $this->getUsersFromDeviceDetailed()['users'];
+    }
+
+    /**
+     * Récupérer les utilisateurs avec détails des étapes exécutées.
+     */
+    public function getUsersFromDeviceDetailed(): array
+    {
+        $trace = [];
+
+        try {
+            $trace[] = 'connection_started';
+
+            if (! $this->connect()) {
+                $trace[] = 'connection_failed';
+
+                return [
+                    'success' => false,
+                    'step' => 'connection_failed',
+                    'message' => 'Connexion au terminal ZKTeco impossible.',
+                    'users' => [],
+                    'trace' => $trace,
+                ];
+            }
+
+            $trace[] = 'connection_ok';
+            $trace[] = 'reading_users';
+            $users = $this->zk->getUser();
+            $trace[] = 'users_received';
+            $this->disconnect();
+            $trace[] = 'device_disconnected';
+
+            if (! is_array($users)) {
+                $trace[] = 'invalid_users_payload';
+
+                return [
+                    'success' => false,
+                    'step' => 'invalid_users_payload',
+                    'message' => 'La machine a retourne un format utilisateurs invalide.',
+                    'users' => [],
+                    'trace' => $trace,
+                ];
+            }
+
+            $normalizedUsers = array_values($users);
+            $trace[] = 'users_normalized';
+
+            return [
+                'success' => true,
+                'step' => 'users_ready',
+                'message' => count($normalizedUsers) . ' utilisateurs recuperes depuis la machine.',
+                'users' => $normalizedUsers,
+                'trace' => $trace,
+            ];
+        } catch (Exception $e) {
+            Log::error("Erreur récupération utilisateurs ZKTeco: " . $e->getMessage());
+            $this->disconnect();
+            $trace[] = 'exception_thrown';
+
+            return [
+                'success' => false,
+                'step' => 'exception_thrown',
+                'message' => $e->getMessage(),
+                'users' => [],
+                'trace' => $trace,
+            ];
+        }
+    }
     
     /**
      * Synchroniser les utilisateurs vers ZKTeco
