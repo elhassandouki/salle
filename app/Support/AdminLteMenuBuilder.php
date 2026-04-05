@@ -92,7 +92,6 @@ class AdminLteMenuBuilder
         $menu[] = ['header' => 'ASSURANCE'];
 
         $assuranceItems = array_values(array_filter([
-            static::routeItemIfTables(['assurance_companies.index'], 'Compagnies', 'fas fa-building', ['services']),
             static::routeItemIfTables(['abonne_assurances.index'], 'Subscriptions assurance', 'fas fa-shield-heart', ['subscriptions']),
             static::routeItemIfTables(
                 ['reclamation_assurances.index'],
@@ -114,6 +113,7 @@ class AdminLteMenuBuilder
         $menu[] = ['header' => 'ANALYSE'];
 
         $reportItems = array_values(array_filter([
+            static::routeItem(['rapports.etats'], 'Etats', 'fas fa-table'),
             static::routeItem(['dashboard.rapports'], 'Vue generale', 'fas fa-chart-line'),
             static::routeItem(['rapports.financier'], 'Financier', 'fas fa-sack-dollar'),
             static::routeItem(['rapports.frequentation'], 'Frequentation', 'fas fa-people-group'),

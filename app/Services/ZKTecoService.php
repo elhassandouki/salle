@@ -256,7 +256,7 @@ class ZKTecoService
             }
             
             $this->disconnect();
-            return false;
+            return true;
             
         } catch (Exception $e) {
             Log::error("Erreur suppression utilisateur ZKTeco: " . $e->getMessage());

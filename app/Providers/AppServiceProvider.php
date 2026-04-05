@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Subscription;
+use App\Observers\SubscriptionObserver;
 use App\Support\AdminLteMenuBuilder;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
@@ -30,6 +32,6 @@ class AppServiceProvider extends ServiceProvider
                 $event->menu->add($item);
             }
         });
-
+        Subscription::observe(SubscriptionObserver::class);
     }
 }

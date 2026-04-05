@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Paiement;
 use App\Models\Subscription;
+use App\Services\ZkSubscriptionAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PaiementController extends Controller
 {
+    public function __construct(private ZkSubscriptionAccessService $zkSubscriptionAccessService)
+    {
+    }
+
     public function index(Request $request)
     {
         $totalPaiements = Paiement::count();
@@ -158,6 +163,7 @@ class PaiementController extends Controller
             ]));
 
             $this->syncSubscriptionTotals((int) $request->subscription_id);
+            $this->zkSubscriptionAccessService->syncSubscriptionAccess((int) $request->subscription_id);
 
             DB::commit();
 
@@ -206,6 +212,7 @@ class PaiementController extends Controller
             ]));
 
             $this->syncSubscriptionTotals((int) $paiement->subscription_id);
+            $this->zkSubscriptionAccessService->syncSubscriptionAccess((int) $paiement->subscription_id);
 
             DB::commit();
 
@@ -269,6 +276,7 @@ class PaiementController extends Controller
             $subscriptionId = (int) $paiement->subscription_id;
             $paiement->delete();
             $this->syncSubscriptionTotals($subscriptionId);
+            $this->zkSubscriptionAccessService->syncSubscriptionAccess($subscriptionId);
 
             DB::commit();
 

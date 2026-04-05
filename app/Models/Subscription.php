@@ -57,11 +57,7 @@ class Subscription extends Model
 
     public function getJoursRestantsAttribute(): int
     {
-        if (! $this->date_fin) {
-            return 0;
-        }
-
-        if ($this->date_fin->isPast()) {
+        if (! $this->date_fin || $this->date_fin->isPast()) {
             return 0;
         }
 
@@ -72,7 +68,7 @@ class Subscription extends Model
     {
         return match ($this->normalizeStatus($this->statut)) {
             'actif' => 'success',
-            'expiré' => 'danger',
+            'expire' => 'danger',
             'suspendu' => 'warning',
             default => 'secondary',
         };
@@ -89,7 +85,7 @@ class Subscription extends Model
             return;
         }
 
-        $nouveauStatut = $this->date_fin && $this->date_fin->isPast() ? 'expiré' : 'actif';
+        $nouveauStatut = $this->date_fin && $this->date_fin->isPast() ? 'expire' : 'actif';
 
         if ($this->normalizeStatus($this->statut) !== $nouveauStatut) {
             $this->forceFill(['statut' => $nouveauStatut])->save();
@@ -99,7 +95,7 @@ class Subscription extends Model
     protected function normalizeStatus(?string $statut): string
     {
         return match ($statut) {
-            'expire', 'expiré', 'expirأ©' => 'expiré',
+            'expire', 'expiré', 'expirأ©', 'expirط£آ©', 'expirط·آ£ط¢آ©' => 'expire',
             default => (string) $statut,
         };
     }

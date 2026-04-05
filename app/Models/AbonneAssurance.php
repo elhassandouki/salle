@@ -12,9 +12,19 @@ class AbonneAssurance extends Model
     protected $table = 'subscriptions';
 
     protected $fillable = [
-        'abonne_id', 'service_id', 'type_abonnement', 'date_debut', 'date_fin',
-        'montant', 'remise', 'montant_total', 'montant_paye', 'reste',
-        'statut', 'auto_renew', 'notes',
+        'abonne_id',
+        'service_id',
+        'type_abonnement',
+        'date_debut',
+        'date_fin',
+        'montant',
+        'remise',
+        'montant_total',
+        'montant_paye',
+        'reste',
+        'statut',
+        'auto_renew',
+        'notes',
     ];
 
     protected $casts = [
@@ -91,9 +101,9 @@ class AbonneAssurance extends Model
 
     public function getStatutCouleurAttribute(): string
     {
-        return match ($this->statut) {
+        return match ($this->normalizeStatus($this->statut)) {
             'actif' => 'success',
-            'expiré' => 'danger',
+            'expire' => 'danger',
             'resilie' => 'warning',
             default => 'secondary',
         };
@@ -101,7 +111,7 @@ class AbonneAssurance extends Model
 
     public function getJoursRestantsAttribute(): int
     {
-        if ($this->statut !== 'actif') {
+        if ($this->normalizeStatus($this->statut) !== 'actif') {
             return 0;
         }
 
@@ -119,7 +129,7 @@ class AbonneAssurance extends Model
 
     public function scopeExpires($query)
     {
-        return $query->where('statut', 'expiré');
+        return $query->whereIn('statut', ['expire', 'expiré', 'expirأ©', 'expirط£آ©', 'expirط·آ£ط¢آ©']);
     }
 
     public function scopeExpirant($query, $jours = 30)
@@ -138,5 +148,13 @@ class AbonneAssurance extends Model
             'montant_paye' => $totalReclamations,
             'reste' => max(0, $this->plafond_annuel - $totalReclamations),
         ])->save();
+    }
+
+    protected function normalizeStatus(?string $statut): string
+    {
+        return match ($statut) {
+            'expire', 'expiré', 'expirأ©', 'expirط£آ©', 'expirط·آ£ط¢آ©' => 'expire',
+            default => (string) $statut,
+        };
     }
 }

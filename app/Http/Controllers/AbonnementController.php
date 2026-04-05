@@ -7,7 +7,6 @@ use App\Models\Service;
 use App\Models\Subscription;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class AbonnementController extends Controller
@@ -51,8 +50,7 @@ class AbonnementController extends Controller
         $dateFin = $request->input('filters.date_fin');
 
         $query = Subscription::with(['abonne', 'service'])
-            ->select('subscriptions.*')
-            ->addSelect(DB::raw('DATEDIFF(date_fin, CURDATE()) as jours_restants'));
+            ->select('subscriptions.*');
 
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
@@ -102,7 +100,7 @@ class AbonnementController extends Controller
         $data = [];
 
         foreach ($abonnements as $index => $abonnement) {
-            $joursRestants = (int) ($abonnement->jours_restants ?? $abonnement->jours_restants);
+            $joursRestants = (int) $abonnement->jours_restants;
 
             $data[] = [
                 'DT_RowIndex' => $start + $index + 1,
@@ -167,15 +165,31 @@ class AbonnementController extends Controller
             'type_abonnement' => 'required|in:mensuel,trimestriel,annuel',
             'date_debut' => 'required|date',
             'montant' => 'required|numeric|min:0',
-            'statut' => 'required|in:actif,expire,expiré,suspendu',
+            'statut' => 'required|in:actif,expire,suspendu',
             'remise' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'montant_paye_initial' => 'nullable|numeric|min:0',
-            'mode_paiement' => 'nullable|required_with:montant_paye_initial|in:especes,carte,cheque,virement',
-            'date_paiement' => 'nullable|required_with:montant_paye_initial|date',
+            'mode_paiement' => 'nullable|in:especes,carte,cheque,virement',
+            'date_paiement' => 'nullable|date',
             'reference' => 'nullable|string|max:100',
             'notes_paiement' => 'nullable|string',
+            'assurance_montant' => 'nullable|numeric|min:0',
+            'assurance_montant_paye_initial' => 'nullable|numeric|min:0',
+            'assurance_type_abonnement' => 'nullable|in:mensuel,trimestriel,semestriel,annuel',
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $hasActivityPayment = (float) ($request->montant_paye_initial ?? 0) > 0;
+            $hasAssurancePayment = (float) ($request->assurance_montant_paye_initial ?? 0) > 0;
+
+            if (($hasActivityPayment || $hasAssurancePayment) && ! $request->filled('mode_paiement')) {
+                $validator->errors()->add('mode_paiement', 'Le mode de paiement est obligatoire.');
+            }
+
+            if (($hasActivityPayment || $hasAssurancePayment) && ! $request->filled('date_paiement')) {
+                $validator->errors()->add('date_paiement', 'La date de paiement est obligatoire.');
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json([
@@ -186,9 +200,10 @@ class AbonnementController extends Controller
         }
 
         try {
-            DB::beginTransaction();
+            \DB::beginTransaction();
 
-            Service::where('type', 'activite')->findOrFail($request->service_id);
+            $activite = Service::where('type', 'activite')->findOrFail($request->service_id);
+            $assurance = (float) ($request->assurance_montant ?? 0) > 0;
 
             $dateDebut = Carbon::parse($request->date_debut);
             $dateFin = $this->calculateEndDate($dateDebut, $request->type_abonnement);
@@ -199,11 +214,14 @@ class AbonnementController extends Controller
 
             Subscription::where('abonne_id', $request->abonne_id)
                 ->where('statut', 'actif')
-                ->update(['statut' => 'expiré']);
+                ->whereHas('service', function ($query) {
+                    $query->where('type', 'activite');
+                })
+                ->update(['statut' => 'expire']);
 
             $abonnement = Subscription::create([
                 'abonne_id' => $request->abonne_id,
-                'service_id' => $request->service_id,
+                'service_id' => $activite->id,
                 'type_abonnement' => $request->type_abonnement,
                 'date_debut' => $dateDebut,
                 'date_fin' => $dateFin,
@@ -216,25 +234,57 @@ class AbonnementController extends Controller
                 'notes' => $request->notes,
             ]);
 
-            if ($montantPayeInitial > 0) {
-                $abonnement->paiements()->create([
-                    'montant' => $montantPayeInitial,
-                    'mode_paiement' => $request->mode_paiement,
-                    'date_paiement' => $request->date_paiement,
-                    'reference' => $request->reference,
-                    'notes' => $request->notes_paiement,
+            $this->createInitialPayment($abonnement, $montantPayeInitial, $request, 'Paiement activite');
+
+            $assuranceSubscription = null;
+
+            if ($assurance) {
+                $assuranceService = $this->resolveGenericAssuranceService();
+                $existingAssurance = Subscription::where('abonne_id', $request->abonne_id)
+                    ->whereHas('service', function ($query) {
+                        $query->where('type', 'assurance');
+                    })
+                    ->where('statut', 'actif')
+                    ->exists();
+
+                if ($existingAssurance) {
+                    throw new \RuntimeException("L'abonne a deja cette assurance active.");
+                }
+
+                $assuranceMontant = (float) ($request->assurance_montant ?? 0);
+                $assuranceMontantPaye = min((float) ($request->assurance_montant_paye_initial ?? 0), $assuranceMontant);
+                $assuranceType = $request->assurance_type_abonnement ?: 'trimestriel';
+
+                $assuranceSubscription = Subscription::create([
+                    'abonne_id' => $request->abonne_id,
+                    'service_id' => $assuranceService->id,
+                    'type_abonnement' => $assuranceType,
+                    'date_debut' => $dateDebut,
+                    'date_fin' => $this->calculateInsuranceEndDate($dateDebut, $assuranceType),
+                    'montant' => $assuranceMontant,
+                    'remise' => 0,
+                    'montant_total' => $assuranceMontant,
+                    'montant_paye' => $assuranceMontantPaye,
+                    'reste' => max(0, $assuranceMontant - $assuranceMontantPaye),
+                    'statut' => $this->normalizeStatus($request->statut),
+                    'notes' => trim("Assurance {$assuranceType}\n" . ($request->notes ?? '')),
                 ]);
+
+                $this->createInitialPayment($assuranceSubscription, $assuranceMontantPaye, $request, 'Paiement assurance');
             }
 
-            DB::commit();
+            \DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Abonnement cree avec succes',
+                'message' => $assuranceSubscription
+                    ? 'Abonnement, paiement et assurance enregistres avec succes'
+                    : 'Abonnement cree avec succes',
                 'abonnement' => $abonnement->load(['abonne', 'service', 'paiements']),
+                'assurance' => $assuranceSubscription?->load(['abonne', 'service', 'paiements']),
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
+            \DB::rollBack();
 
             return response()->json([
                 'success' => false,
@@ -246,7 +296,7 @@ class AbonnementController extends Controller
     public function update(Request $request, Subscription $subscription)
     {
         $validator = Validator::make($request->all(), [
-            'statut' => 'required|in:actif,expire,expiré,suspendu',
+            'statut' => 'required|in:actif,expire,suspendu',
             'date_fin' => 'required|date|after_or_equal:date_debut',
         ]);
 
@@ -285,16 +335,34 @@ class AbonnementController extends Controller
             'abonnement' => [
                 'id' => $subscription->id,
                 'abonne' => $subscription->abonne->nom . ' ' . $subscription->abonne->prenom,
+                'abonne_cin' => $subscription->abonne->cin,
                 'service' => $subscription->service->nom ?? 'N/A',
                 'type' => ucfirst((string) $subscription->type_abonnement),
                 'date_debut' => optional($subscription->date_debut)->format('d/m/Y'),
                 'date_fin' => optional($subscription->date_fin)->format('d/m/Y'),
                 'montant' => number_format((float) $subscription->montant_total, 2) . ' DH',
+                'montant_brut' => number_format((float) $subscription->montant, 2) . ' DH',
+                'remise' => number_format((float) $subscription->remise, 2) . ' DH',
                 'montant_paye' => number_format((float) $subscription->montant_paye, 2) . ' DH',
                 'reste' => number_format((float) $subscription->reste, 2) . ' DH',
                 'statut' => ucfirst($this->displayStatus($subscription->statut)),
                 'paiements_count' => $subscription->paiements->count(),
                 'jours_restants' => $subscription->jours_restants,
+                'notes' => $subscription->notes,
+                'created_at' => optional($subscription->created_at)->format('d/m/Y H:i'),
+                'updated_at' => optional($subscription->updated_at)->format('d/m/Y H:i'),
+                'paiements' => $subscription->paiements
+                    ->sortByDesc('date_paiement')
+                    ->values()
+                    ->map(function ($paiement) {
+                        return [
+                            'montant' => number_format((float) $paiement->montant, 2) . ' DH',
+                            'mode_paiement' => ucfirst((string) $paiement->mode_paiement),
+                            'date_paiement' => optional($paiement->date_paiement)->format('d/m/Y H:i'),
+                            'reference' => $paiement->reference,
+                            'notes' => $paiement->notes,
+                        ];
+                    }),
             ],
         ]);
     }
@@ -326,9 +394,8 @@ class AbonnementController extends Controller
     public function renew(Request $request, Subscription $subscription)
     {
         try {
-            DB::beginTransaction();
-
-            $subscription->update(['statut' => 'expiré']);
+            \DB::beginTransaction();
+            $subscription->update(['statut' => 'expire']);
 
             $dateDebut = Carbon::parse($subscription->date_fin)->addDay();
             $dateFin = $this->calculateEndDate($dateDebut, $subscription->type_abonnement);
@@ -348,7 +415,7 @@ class AbonnementController extends Controller
                 'notes' => $subscription->notes,
             ]);
 
-            DB::commit();
+            \DB::commit();
 
             return response()->json([
                 'success' => true,
@@ -356,7 +423,7 @@ class AbonnementController extends Controller
                 'abonnement' => $nouvelAbonnement,
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
+            \DB::rollBack();
 
             return response()->json([
                 'success' => false,
@@ -392,7 +459,7 @@ class AbonnementController extends Controller
     public function changeStatus(Request $request, Subscription $subscription)
     {
         $validator = Validator::make($request->all(), [
-            'statut' => 'required|in:actif,expire,expiré,suspendu',
+            'statut' => 'required|in:actif,expire,suspendu',
         ]);
 
         if ($validator->fails()) {
@@ -491,7 +558,7 @@ class AbonnementController extends Controller
     protected function normalizeStatus(?string $status): string
     {
         return match ($status) {
-            'expire', 'expiré', 'expirأ©' => 'expiré',
+            'expire', 'expiré', 'expirأ©', 'expirط£آ©', 'expirط·آ£ط¢آ©' => 'expire',
             default => $status ?: 'actif',
         };
     }
@@ -499,13 +566,54 @@ class AbonnementController extends Controller
     protected function displayStatus(?string $status): string
     {
         return match ($this->normalizeStatus($status)) {
-            'expiré' => 'expire',
-            default => (string) $status,
+            'expire' => 'expire',
+            default => (string) $this->normalizeStatus($status),
         };
     }
 
     protected function expiredStatuses(): array
     {
-        return ['expire', 'expiré', 'expirأ©'];
+        return ['expire', 'expiré', 'expirأ©', 'expirط£آ©', 'expirط·آ£ط¢آ©'];
+    }
+
+    protected function resolveGenericAssuranceService(): Service
+    {
+        return Service::firstOrCreate(
+            ['type' => 'assurance', 'nom' => 'Assurance'],
+            [
+                'description' => 'Service generique pour les assurances',
+                'prix_mensuel' => 0,
+                'prix_trimestriel' => 0,
+                'prix_annuel' => 0,
+                'statut' => 'actif',
+                'couleur' => '#17a2b8',
+            ]
+        );
+    }
+
+    protected function calculateInsuranceEndDate(Carbon $dateDebut, string $type): Carbon
+    {
+        return match ($type) {
+            'mensuel' => $dateDebut->copy()->addMonth(),
+            'trimestriel' => $dateDebut->copy()->addMonths(3),
+            'semestriel' => $dateDebut->copy()->addMonths(6),
+            'annuel' => $dateDebut->copy()->addYear(),
+            default => $dateDebut->copy()->addMonths(3),
+        };
+    }
+
+    protected function createInitialPayment(Subscription $subscription, float $montant, Request $request, string $label): void
+    {
+        if ($montant <= 0) {
+            return;
+        }
+
+        $subscription->paiements()->create([
+            'montant' => $montant,
+            'mode_paiement' => $request->mode_paiement,
+            'date_paiement' => $request->date_paiement,
+            'reference' => $request->reference,
+            'notes' => trim($label . PHP_EOL . ($request->notes_paiement ?? '')),
+        ]);
     }
 }

@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AbonneAssurance;
 use App\Models\Abonne;
-use App\Models\AssuranceCompany;
+use App\Models\AbonneAssurance;
+use App\Models\Service;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -15,19 +16,16 @@ class AbonneAssuranceController extends Controller
     {
         $totalAssurances = AbonneAssurance::count();
         $totalActives = AbonneAssurance::where('statut', 'actif')->count();
-        $totalExpirees = AbonneAssurance::where('statut', 'expiré')->count();
+        $totalExpirees = AbonneAssurance::expires()->count();
         $totalResiliees = AbonneAssurance::where('statut', 'resilie')->count();
-        
-        $abonnes = Abonne::all();
-        $companies = AssuranceCompany::all();
+        $abonnes = Abonne::orderBy('nom')->orderBy('prenom')->get();
 
         return view('abonne_assurances.index', compact(
-            'totalAssurances', 
-            'totalActives', 
+            'totalAssurances',
+            'totalActives',
             'totalExpirees',
             'totalResiliees',
-            'abonnes',
-            'companies'
+            'abonnes'
         ));
     }
 
@@ -39,35 +37,36 @@ class AbonneAssuranceController extends Controller
         $search = $request->input('search.value');
         $statut = $request->input('filters.statut');
         $abonneId = $request->input('filters.abonne_id');
-        $companyId = $request->input('filters.company_id');
+        $type = $request->input('filters.type_abonnement');
 
-        $query = AbonneAssurance::with(['abonne', 'company']);
+        $query = AbonneAssurance::with('abonne');
 
-        if (!empty($search)) {
-            $query->where(function($q) use ($search) {
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
                 $q->where('notes', 'LIKE', "%{$search}%")
-                  ->orWhere('id', 'LIKE', "%{$search}%")
-                  ->orWhereHas('abonne', function($q2) use ($search) {
-                      $q2->where('nom', 'LIKE', "%{$search}%")
-                         ->orWhere('prenom', 'LIKE', "%{$search}%")
-                         ->orWhere('cin', 'LIKE', "%{$search}%");
-                  })
-                  ->orWhereHas('company', function($q2) use ($search) {
-                      $q2->where('nom', 'LIKE', "%{$search}%");
-                  });
+                    ->orWhere('id', 'LIKE', "%{$search}%")
+                    ->orWhereHas('abonne', function ($q2) use ($search) {
+                        $q2->where('nom', 'LIKE', "%{$search}%")
+                            ->orWhere('prenom', 'LIKE', "%{$search}%")
+                            ->orWhere('cin', 'LIKE', "%{$search}%");
+                    });
             });
         }
 
-        if (!empty($statut)) {
-            $query->where('statut', $statut);
+        if (! empty($statut)) {
+            if ($statut === 'expire') {
+                $query->expires();
+            } else {
+                $query->where('statut', $statut);
+            }
         }
 
-        if (!empty($abonneId)) {
+        if (! empty($abonneId)) {
             $query->where('abonne_id', $abonneId);
         }
 
-        if (!empty($companyId)) {
-            $query->where('service_id', $companyId);
+        if (! empty($type)) {
+            $query->where('type_abonnement', $type);
         }
 
         $totalRecords = $query->count();
@@ -78,54 +77,45 @@ class AbonneAssuranceController extends Controller
             ->get();
 
         $data = [];
+
         foreach ($assurances as $index => $assurance) {
             $joursRestants = $assurance->jours_restants;
-            $pourcentageUtilise = $assurance->pourcentage_utilise;
-            
             $data[] = [
                 'DT_RowIndex' => $start + $index + 1,
                 'id' => $assurance->id,
                 'abonne' => $assurance->abonne->nom . ' ' . $assurance->abonne->prenom,
-                'company' => $assurance->company->nom,
+                'duree' => ucfirst((string) $assurance->type_abonnement),
                 'contrat' => '
                     <div>
-                        <strong>' . $assurance->numero_contrat . '</strong>
-                        <div><small>Du ' . $assurance->date_debut->format('d/m/Y') . ' au ' . 
-                               $assurance->date_fin->format('d/m/Y') . '</small></div>
+                        <strong>' . e($assurance->numero_contrat) . '</strong>
+                        <div><small>Du ' . $assurance->date_debut->format('d/m/Y') . ' au ' .
+                            $assurance->date_fin->format('d/m/Y') . '</small></div>
                     </div>',
-                'plafond' => '
+                'montant' => '
                     <div class="text-center">
-                        <div><small>Plafond:</small> ' . number_format($assurance->plafond_annuel, 2) . ' DH</div>
-                        <div><small>Utilisé:</small> ' . number_format($assurance->montant_utilise, 2) . ' DH</div>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar ' . ($pourcentageUtilise >= 80 ? 'bg-danger' : ($pourcentageUtilise >= 50 ? 'bg-warning' : 'bg-success')) . '" 
-                                 style="width: ' . min(100, $pourcentageUtilise) . '%" title="' . round($pourcentageUtilise, 1) . '% utilisé">
-                            </div>
-                        </div>
+                        <div><strong>' . number_format((float) $assurance->montant_total, 2) . ' DH</strong></div>
+                        <div><small>Paye:</small> ' . number_format((float) $assurance->montant_paye, 2) . ' DH</div>
+                        <div><small>Reste:</small> ' . number_format((float) $assurance->reste, 2) . ' DH</div>
                     </div>',
-                'jours_restants' => $joursRestants > 0 ? 
-                    '<span class="badge badge-' . ($joursRestants <= 30 ? 'warning' : 'success') . '">' . 
-                    $joursRestants . ' jour(s)</span>' : 
-                    '<span class="badge badge-secondary">Expiré</span>',
+                'jours_restants' => $joursRestants > 0
+                    ? '<span class="badge badge-' . ($joursRestants <= 30 ? 'warning' : 'success') . '">' . $joursRestants . ' jour(s)</span>'
+                    : '<span class="badge badge-secondary">Expire</span>',
                 'statut_badge' => '
                     <span class="badge badge-' . $assurance->statut_couleur . '">
-                        ' . ucfirst($assurance->statut) . '
+                        ' . ucfirst($this->normalizeStatus($assurance->statut)) . '
                     </span>',
                 'action' => '
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-info view-btn" data-id="' . $assurance->id . '">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn btn-warning edit-btn" data-id="' . $assurance->id . '">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-success reclamation-btn" data-id="' . $assurance->id . '" title="Réclamation">
+                        <button class="btn btn-success reclamation-btn" data-id="' . $assurance->id . '" title="Reclamation">
                             <i class="fas fa-file-medical"></i>
                         </button>
-                        <button class="btn btn-danger delete-btn" data-id="' . $assurance->id . '">
+                        <button class="btn btn-info renouveler-btn" data-id="' . $assurance->id . '" title="Renouveler">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="btn btn-danger delete-btn" data-id="' . $assurance->id . '" title="Supprimer">
                             <i class="fas fa-trash"></i>
                         </button>
-                    </div>'
+                    </div>',
             ];
         }
 
@@ -133,7 +123,7 @@ class AbonneAssuranceController extends Controller
             'draw' => $draw,
             'recordsTotal' => $totalRecords,
             'recordsFiltered' => $totalRecords,
-            'data' => $data
+            'data' => $data,
         ]);
     }
 
@@ -141,61 +131,60 @@ class AbonneAssuranceController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'abonne_id' => 'required|exists:abonnes,id',
-            'assurance_company_id' => 'required|exists:services,id',
-            'numero_contrat' => 'nullable|string|max:100',
+            'type_abonnement' => 'required|in:mensuel,trimestriel,semestriel,annuel',
             'date_debut' => 'required|date',
-            'date_fin' => 'required|date|after_or_equal:date_debut',
-            'plafond_annuel' => 'required|numeric|min:0',
-            'statut' => 'required|in:actif,expiré,resilie',
-            'notes' => 'nullable|string'
+            'montant_assurance' => 'required|numeric|min:0',
+            'statut' => 'required|in:actif,expire,resilie',
+            'notes' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
-            // Vérifier si l'abonné a déjà une assurance active avec cette compagnie
             $existing = AbonneAssurance::where('abonne_id', $request->abonne_id)
-                ->where('service_id', $request->assurance_company_id)
                 ->where('statut', 'actif')
                 ->exists();
 
             if ($existing) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'L\'abonné a déjà une assurance active avec cette compagnie'
+                    'message' => 'L abonne a deja une assurance active.',
                 ], 400);
             }
 
+            $service = $this->resolveGenericAssuranceService();
+            $dateDebut = Carbon::parse($request->date_debut);
+            $dateFin = $this->calculateInsuranceEndDate($dateDebut, $request->type_abonnement);
+
             $assurance = AbonneAssurance::create([
                 'abonne_id' => $request->abonne_id,
-                'service_id' => $request->assurance_company_id,
-                'type_abonnement' => 'annuel',
-                'date_debut' => $request->date_debut,
-                'date_fin' => $request->date_fin,
-                'montant' => $request->plafond_annuel,
-                'montant_total' => $request->plafond_annuel,
+                'service_id' => $service->id,
+                'type_abonnement' => $request->type_abonnement,
+                'date_debut' => $dateDebut,
+                'date_fin' => $dateFin,
+                'montant' => $request->montant_assurance,
+                'montant_total' => $request->montant_assurance,
                 'montant_paye' => 0,
-                'reste' => $request->plafond_annuel,
-                'statut' => $request->statut,
-                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . ($request->notes ?? ''))
-            ]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Assurance créée avec succès',
-                'assurance' => $assurance
+                'reste' => $request->montant_assurance,
+                'statut' => $this->normalizeStatus($request->statut),
+                'notes' => $request->notes,
             ]);
 
+            return response()->json([
+                'success' => true,
+                'message' => 'Assurance creee avec succes',
+                'assurance' => $assurance,
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -203,72 +192,44 @@ class AbonneAssuranceController extends Controller
     public function update(Request $request, AbonneAssurance $abonneAssurance)
     {
         $validator = Validator::make($request->all(), [
-            'numero_contrat' => 'required|string|max:100',
+            'type_abonnement' => 'required|in:mensuel,trimestriel,semestriel,annuel',
             'date_debut' => 'required|date',
-            'date_fin' => 'required|date|after_or_equal:date_debut',
-            'plafond_annuel' => 'required|numeric|min:0',
-            'statut' => 'required|in:actif,expiré,resilie',
-            'notes' => 'nullable|string'
+            'montant_assurance' => 'required|numeric|min:0',
+            'statut' => 'required|in:actif,expire,resilie',
+            'notes' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
+            $dateDebut = Carbon::parse($request->date_debut);
+            $dateFin = $this->calculateInsuranceEndDate($dateDebut, $request->type_abonnement);
+
             $abonneAssurance->update([
-                'date_debut' => $request->date_debut,
-                'date_fin' => $request->date_fin,
-                'montant' => $request->plafond_annuel,
-                'montant_total' => $request->plafond_annuel,
-                'reste' => max(0, $request->plafond_annuel - $abonneAssurance->montant_paye),
-                'statut' => $request->statut,
-                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . ($request->notes ?? ''))
-            ]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Assurance mise à jour avec succès'
+                'type_abonnement' => $request->type_abonnement,
+                'date_debut' => $dateDebut,
+                'date_fin' => $dateFin,
+                'montant' => $request->montant_assurance,
+                'montant_total' => $request->montant_assurance,
+                'reste' => max(0, $request->montant_assurance - $abonneAssurance->montant_paye),
+                'statut' => $this->normalizeStatus($request->statut),
+                'notes' => $request->notes,
             ]);
 
+            return response()->json([
+                'success' => true,
+                'message' => 'Assurance mise a jour avec succes',
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function changerStatut(Request $request, AbonneAssurance $abonneAssurance)
-    {
-        $validator = Validator::make($request->all(), [
-            'statut' => 'required|in:actif,expiré,resilie'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            $abonneAssurance->update(['statut' => $request->statut]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Statut mis à jour avec succès'
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -276,27 +237,25 @@ class AbonneAssuranceController extends Controller
     public function destroy(AbonneAssurance $abonneAssurance)
     {
         try {
-            // Vérifier s'il y a des réclamations
             $reclamationsCount = $abonneAssurance->reclamations()->count();
-            
+
             if ($reclamationsCount > 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Impossible de supprimer: assurance a des réclamations associées'
+                    'message' => 'Impossible de supprimer: assurance a des reclamations associees',
                 ], 400);
             }
 
             $abonneAssurance->delete();
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Assurance supprimée avec succès'
+                'message' => 'Assurance supprimee avec succes',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -304,119 +263,148 @@ class AbonneAssuranceController extends Controller
     public function renouveler(Request $request, AbonneAssurance $abonneAssurance)
     {
         $validator = Validator::make($request->all(), [
-            'date_fin' => 'required|date|after_or_equal:today',
-            'plafond_annuel' => 'required|numeric|min:0'
+            'type_abonnement' => 'required|in:mensuel,trimestriel,semestriel,annuel',
+            'montant_assurance' => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            // Mettre l'ancienne assurance comme expirée
-            $abonneAssurance->update(['statut' => 'expiré']);
+            $abonneAssurance->update(['statut' => 'expire']);
+            $dateDebut = Carbon::parse($abonneAssurance->date_fin)->addDay();
+            $dateFin = $this->calculateInsuranceEndDate($dateDebut, $request->type_abonnement);
 
-            // Créer la nouvelle assurance
             $nouvelleAssurance = AbonneAssurance::create([
                 'abonne_id' => $abonneAssurance->abonne_id,
-                'service_id' => $abonneAssurance->service_id,
-                'type_abonnement' => 'annuel',
-                'date_debut' => now(),
-                'date_fin' => $request->date_fin,
-                'montant' => $request->plafond_annuel,
-                'montant_total' => $request->plafond_annuel,
+                'service_id' => $abonneAssurance->service_id ?: $this->resolveGenericAssuranceService()->id,
+                'type_abonnement' => $request->type_abonnement,
+                'date_debut' => $dateDebut,
+                'date_fin' => $dateFin,
+                'montant' => $request->montant_assurance,
+                'montant_total' => $request->montant_assurance,
                 'montant_paye' => 0,
-                'reste' => $request->plafond_annuel,
+                'reste' => $request->montant_assurance,
                 'statut' => 'actif',
-                'notes' => trim(($request->numero_contrat ? 'Contrat: ' . $request->numero_contrat . PHP_EOL : '') . 'Renouvellement de l\'assurance ' . $abonneAssurance->numero_contrat)
+                'notes' => trim('Renouvellement assurance' . PHP_EOL . ($request->notes ?? '')),
             ]);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Assurance renouvelée avec succès',
-                'assurance' => $nouvelleAssurance
+                'message' => 'Assurance renouvelee avec succes',
+                'assurance' => $nouvelleAssurance,
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }
 
     public function export(Request $request)
     {
-        $query = AbonneAssurance::with(['abonne', 'company']);
-        
-        if ($request->has('statut') && $request->statut) {
-            $query->where('statut', $request->statut);
+        $query = AbonneAssurance::with('abonne');
+
+        if ($request->filled('statut')) {
+            if ($request->statut === 'expire') {
+                $query->expires();
+            } else {
+                $query->where('statut', $request->statut);
+            }
         }
-        
-        if ($request->has('abonne_id') && $request->abonne_id) {
+
+        if ($request->filled('abonne_id')) {
             $query->where('abonne_id', $request->abonne_id);
         }
-        
-        if ($request->has('company_id') && $request->company_id) {
-            $query->where('service_id', $request->company_id);
+
+        if ($request->filled('type_abonnement')) {
+            $query->where('type_abonnement', $request->type_abonnement);
         }
-        
+
         $assurances = $query->orderBy('date_debut', 'desc')->get();
-        
         $fileName = 'abonne_assurances_' . date('Y-m-d_H-i-s') . '.csv';
-        
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
-        ];
-        
-        $callback = function() use ($assurances) {
+
+        return response()->stream(function () use ($assurances) {
             $file = fopen('php://output', 'w');
-            
-            // En-têtes
+
             fputcsv($file, [
                 'ID',
-                'Abonné',
-                'Compagnie',
-                'N° Contrat',
-                'Date début',
+                'Abonne',
+                'Duree',
+                'Date debut',
                 'Date fin',
-                'Plafond annuel (DH)',
-                'Montant utilisé (DH)',
-                'Solde (DH)',
+                'Montant (DH)',
+                'Montant paye (DH)',
+                'Reste (DH)',
                 'Statut',
-                'Notes'
+                'Notes',
             ], ';');
-            
-            // Données
+
             foreach ($assurances as $assurance) {
                 fputcsv($file, [
                     $assurance->id,
                     $assurance->abonne->nom . ' ' . $assurance->abonne->prenom,
-                    $assurance->company->nom,
-                    $assurance->numero_contrat,
+                    $assurance->type_abonnement,
                     $assurance->date_debut->format('d/m/Y'),
                     $assurance->date_fin->format('d/m/Y'),
-                    $assurance->plafond_annuel,
-                    $assurance->montant_utilise,
-                    $assurance->solde,
-                    ucfirst($assurance->statut),
-                    $assurance->notes ?? ''
+                    $assurance->montant_total,
+                    $assurance->montant_paye,
+                    $assurance->reste,
+                    ucfirst($this->normalizeStatus($assurance->statut)),
+                    $assurance->notes ?? '',
                 ], ';');
             }
-            
+
             fclose($file);
+        }, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+        ]);
+    }
+
+    protected function resolveGenericAssuranceService(): Service
+    {
+        return Service::firstOrCreate(
+            ['type' => 'assurance', 'nom' => 'Assurance'],
+            [
+                'description' => 'Service generique pour les assurances',
+                'prix_mensuel' => 0,
+                'prix_trimestriel' => 0,
+                'prix_annuel' => 0,
+                'statut' => 'actif',
+                'couleur' => '#17a2b8',
+            ]
+        );
+    }
+
+    protected function calculateInsuranceEndDate(Carbon $dateDebut, string $type): Carbon
+    {
+        return match ($type) {
+            'mensuel' => $dateDebut->copy()->addMonth(),
+            'trimestriel' => $dateDebut->copy()->addMonths(3),
+            'semestriel' => $dateDebut->copy()->addMonths(6),
+            'annuel' => $dateDebut->copy()->addYear(),
+            default => $dateDebut->copy()->addMonths(3),
         };
-        
-        return response()->stream($callback, 200, $headers);
+    }
+
+    protected function normalizeStatus(?string $status): string
+    {
+        return match ($status) {
+            'expire', 'expiré', 'expirأ©', 'expirط£آ©' => 'expire',
+            default => $status ?: 'actif',
+        };
     }
 }

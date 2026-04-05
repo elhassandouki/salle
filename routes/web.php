@@ -4,7 +4,6 @@ use App\Http\Controllers\AbonneAssuranceController;
 use App\Http\Controllers\AbonneController;
 use App\Http\Controllers\AbonnementController;
 use App\Http\Controllers\ActiviteController;
-use App\Http\Controllers\AssuranceCompanyController;
 use App\Http\Controllers\CoachController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PaiementController;
@@ -113,22 +112,12 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{pointage}', [PointageController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('assurance-companies')->name('assurance_companies.')->group(function () {
-        Route::get('/', [AssuranceCompanyController::class, 'index'])->name('index');
-        Route::get('/getData', [AssuranceCompanyController::class, 'getData'])->name('getData');
-        Route::post('/', [AssuranceCompanyController::class, 'store'])->name('store');
-        Route::get('/export', [AssuranceCompanyController::class, 'export'])->name('export');
-        Route::get('/{assurance_company}', [AssuranceCompanyController::class, 'show'])->name('show');
-        Route::get('/{assurance_company}/edit', [AssuranceCompanyController::class, 'edit'])->name('edit');
-        Route::put('/{assurance_company}', [AssuranceCompanyController::class, 'update'])->name('update');
-        Route::delete('/{assurance_company}', [AssuranceCompanyController::class, 'destroy'])->name('destroy');
-    });
-
     Route::prefix('abonne-assurances')->name('abonne_assurances.')->group(function () {
         Route::get('/', [AbonneAssuranceController::class, 'index'])->name('index');
         Route::get('/getData', [AbonneAssuranceController::class, 'getData'])->name('getData');
         Route::post('/', [AbonneAssuranceController::class, 'store'])->name('store');
         Route::get('/export', [AbonneAssuranceController::class, 'export'])->name('export');
+        Route::post('/{abonne_assurance}/renouveler', [AbonneAssuranceController::class, 'renouveler'])->name('renouveler');
         Route::get('/{abonne_assurance}', [AbonneAssuranceController::class, 'show'])->name('show');
         Route::get('/{abonne_assurance}/edit', [AbonneAssuranceController::class, 'edit'])->name('edit');
         Route::put('/{abonne_assurance}', [AbonneAssuranceController::class, 'update'])->name('update');
@@ -165,6 +154,9 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::prefix('rapports')->name('rapports.')->group(function () {
+        Route::get('/etats', [HomeController::class, 'etats'])->name('etats');
+        Route::get('/etats/pdf', [HomeController::class, 'exportEtatPdf'])->name('etats.pdf');
+        Route::get('/pdf/{type}', [HomeController::class, 'exportPdf'])->name('pdf');
         Route::get('/financier', [HomeController::class, 'rapportFinancier'])->name('financier');
         Route::get('/frequentation', [HomeController::class, 'rapportFrequentation'])->name('frequentation');
         Route::get('/assurances', [HomeController::class, 'rapportAssurances'])->name('assurances');

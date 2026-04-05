@@ -139,6 +139,26 @@ class CoachController extends Controller
         }
     }
 
+    public function show(Coach $coach)
+    {
+        $coach->load(['activites' => function ($query) {
+            $query->select('id', 'coach_id', 'nom', 'statut');
+        }]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $coach
+        ]);
+    }
+
+    public function edit(Coach $coach)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $coach
+        ]);
+    }
+
     public function update(Request $request, Coach $coach)
     {
         $validator = Validator::make($request->all(), [
